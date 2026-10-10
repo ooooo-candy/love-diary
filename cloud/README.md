@@ -8,30 +8,29 @@
 2. 创建环境：选择「按量计费」（有免费额度，个人使用基本够）
 3. 记下 **环境 ID**（形如 `xxx-1a2b3c4d`）
 
-## 第 2 步：创建数据库集合
+## 第 2 步：不需要数据库 ✅
 
-控制台 →「云数据库」→ 新建以下 4 个集合，权限全部设为 **仅创建者可读写**（实际读写都走云函数，权限越严越安全）：
+本方案把整份数据存成云存储里的一个 JSON 文件（`love-diary/db.json`），
+**不用开通云数据库、也不用手动建集合**，开通环境即可直接跑。
+（读写都经过云函数，数据不会直接暴露给公网。）
 
-| 集合名 | 用途 |
-|---|---|
-| `ld_users` | 用户（手机号、昵称、头像、登录态） |
-| `ld_books` | 情侣本（邀请码、双方昵称、纪念日、成员） |
-| `ld_records` | 恋爱记录 |
-| `ld_sms_codes` | 短信验证码 |
-
-## 第 3 步：部署云函数
-
-方式 A（推荐，用命令行）：
+## 第 3 步：部署云函数 + HTTP 访问服务
 
 ```bash
 npm install -g @cloudbase/cli
-tcb login                      # 浏览器授权一次
-cd cloud/api
-tcb fn deploy api --force      # 部署云函数（名字必须叫 api）
-```
+tcb login                                    # 浏览器授权一次
 
-方式 B（网页上传）：控制台 →「云函数」→ 新建函数 `api` → 运行环境 Node.js 16 →
-把 `cloud/api` 目录打包 zip 上传（依赖 `@cloudbase/node-sdk` 需要在本地 `npm install` 后一起打包）。
+# 云函数依赖（本地装好后随代码一起上传）
+cd cloud/api && npm install && cd ../..
+
+# 部署云函数（仓库里的 cloudbaserc.json 已配置好：本地打包依赖 + 函数名为 api）
+tcb fn deploy api --force
+
+# 为云函数开通 HTTP 访问服务，前端通过它通信（不需要前端登录态）
+tcb service create -p api -f api
+# 记下输出的访问地址，例如：
+# https://<env>.ap-shanghai.app.tcloudbase.com/api
+```
 
 ## 第 4 步：开通手机号验证码登录
 
@@ -47,19 +46,15 @@ tcb fn deploy api --force      # 部署云函数（名字必须叫 api）
 
 ## 第 5 步：前端切换到云端
 
-编辑 `index.html`，把：
+编辑 `index.html`：
 
 ```js
-window.APP_CONFIG = { mode: 'mock', envId: '' };
+window.APP_CONFIG = {
+  mode: 'cloud',
+  envId: '你的环境ID',
+  httpBase: 'https://<env>.ap-shanghai.app.tcloudbase.com/api'   // 第 3 步拿到的地址
+};
 ```
-
-改成：
-
-```js
-window.APP_CONFIG = { mode: 'cloud', envId: '你的环境ID' };
-```
-
-并在控制台「登录授权 → Web 安全域名」里加上你的访问域名（本地调试加 `localhost`）。
 
 ## 第 6 步：托管前端
 

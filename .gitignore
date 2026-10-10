@@ -1,4 +1,6 @@
 node_modules/
+cloud/api/node_modules/
+public/
 .tmp/
 .playwright-cli/
 .DS_Store

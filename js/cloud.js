@@ -1,19 +1,19 @@
 /* 云端调用层
- * 统一封装：账号会话、云函数、图片上传 / 临时地址。
- * 当 CloudBase 未配置或不可用时自动降级为本地模拟模式（便于先跑通界面与流程）。
+ * 通过云函数的 HTTP 访问服务通信：不需要 CloudBase 前端 SDK，也不需要匿名登录，
+ * 业务上的身份校验由我们自己签发的 token 完成。
+ * 未配置云服务时自动降级为本地模拟模式。
  */
 (function (global) {
   'use strict';
 
   const SESSION_KEY = 'love-diary:session';
-  const FN_NAME = 'api';
 
   const config = (global.APP_CONFIG = global.APP_CONFIG || {
-    mode: 'mock', // 'cloud' | 'mock'
-    envId: ''
+    mode: 'mock',     // 'cloud' | 'mock'
+    envId: '',
+    httpBase: ''      // 云函数的 HTTP 访问地址，形如 https://xxx.app.tcloudbase.com/api
   });
 
-  let tcbApp = null;
   let online = false;
 
   function loadSession() {
@@ -29,25 +29,13 @@
     else localStorage.removeItem(SESSION_KEY);
   }
 
-  function loadScript(src) {
+  function blobToDataURL(blob) {
     return new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = src;
-      s.async = true;
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error('CloudBase SDK 加载失败'));
-      document.head.appendChild(s);
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result);
+      fr.onerror = () => reject(new Error('图片读取失败'));
+      fr.readAsDataURL(blob);
     });
-  }
-
-  async function getApp() {
-    if (tcbApp) return tcbApp;
-    if (!global.cloudbase) {
-      await loadScript('https://static.cloudbase.net/cloudbase-js-sdk/2.7.1/cloudbase.full.js');
-    }
-    if (!global.cloudbase) throw new Error('CloudBase SDK 未加载');
-    tcbApp = global.cloudbase.init({ env: config.envId });
-    return tcbApp;
   }
 
   const Cloud = {
@@ -58,16 +46,7 @@
     isOnline: () => online,
 
     async init() {
-      if (config.mode === 'cloud' && config.envId) {
-        try {
-          await getApp();
-          online = true;
-        } catch (err) {
-          online = false;
-        }
-      } else {
-        online = false;
-      }
+      online = config.mode === 'cloud' && Boolean(config.httpBase);
       if (!online && global.MockCloud) global.MockCloud.init();
       return { online: online };
     },
@@ -90,39 +69,53 @@
         args.uid = s.uid;
         args.token = s.token;
       }
+
       if (!online) {
-        if (!global.MockCloud) throw new Error('未连接云服务，也未开启本地模式');
+        if (!global.MockCloud) throw new Error('未连接云服务');
         return global.MockCloud.handle(action, args);
       }
-      const app = await getApp();
-      const res = await app.callFunction({ name: FN_NAME, data: { action: action, payload: args } });
-      const body = res && res.result;
-      if (body && body.ok) return body.data;
+
+      let res;
+      try {
+        res = await fetch(config.httpBase, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: action, payload: args })
+        });
+      } catch (err) {
+        const e = new Error('网络不太好，稍后再试');
+        e.apiCode = 'NETWORK';
+        throw e;
+      }
+
+      let body = null;
+      try {
+        body = await res.json();
+      } catch (err) {
+        const e = new Error('服务器返回异常');
+        e.apiCode = 'BAD_RESPONSE';
+        throw e;
+      }
+
+      if (body && body.ok) return body.data || {};
       const err = new Error((body && body.error) || '请求失败');
       err.apiCode = (body && body.apiCode) || 'UNKNOWN';
       throw err;
     },
 
-    /* 上传一张图片到云存储，返回 fileId */
-    async uploadImage(file, fileIdHint) {
+    /* 上传图片：压缩后的 blob → base64 → 服务端写入云存储 */
+    async uploadImage(file) {
       if (!online) {
         if (!global.MockCloud) throw new Error('未开启本地模式');
         return global.MockCloud.upload(file);
       }
-      const app = await getApp();
-      const ext = (String(file.name || '').split('.').pop() || 'jpg').toLowerCase();
-      const cloudPath =
-        'love-diary/' +
-        (Cloud.session ? Cloud.session.uid : 'anon') +
-        '/' +
-        Date.now() +
-        '_' +
-        Math.random().toString(36).slice(2, 8) +
-        '.' +
-        ext;
-      const res = await app.uploadFile({ cloudPath: cloudPath, filePath: file });
-      if (!res || !res.fileID) throw new Error('图片上传失败');
-      return { fileId: res.fileID };
+      const dataUrl = await blobToDataURL(file);
+      const data = await Cloud.call('uploadImage', {
+        base64: dataUrl,
+        name: (file && file.name) || 'photo.jpg'
+      });
+      if (!data || !data.fileId) throw new Error('图片上传失败');
+      return { fileId: data.fileId };
     },
 
     /* 换取图片临时下载地址 */
@@ -133,13 +126,13 @@
       return data.urls || {};
     },
 
-    /* 便捷包装 */
     api: {
       sendCode: (phone) => Cloud.call('sendCode', { phone: phone }),
-      signIn: (phone, code) => Cloud.call('signIn', { phone: phone, code: code }).then((d) => {
-        Cloud.setSession({ uid: d.uid, token: d.token });
-        return d;
-      }),
+      signIn: (phone, code) =>
+        Cloud.call('signIn', { phone: phone, code: code }).then((d) => {
+          Cloud.setSession({ uid: d.uid, token: d.token });
+          return d;
+        }),
       signOut: () => Cloud.call('signOut', {}).finally(() => Cloud.clearSession()),
       me: () => Cloud.call('me', {}),
       updateUser: (patch) => Cloud.call('updateUser', patch),

@@ -62,8 +62,11 @@
   <div class="toasts" id="toasts"></div>
 
   <script>
-    /* 运行模式：先用本地演示模式跑通；开通 CloudBase 后把 mode 改成 'cloud' 并填 envId */
-    window.APP_CONFIG = { mode: 'mock', envId: '' };
+    window.APP_CONFIG = {
+      mode: 'cloud',
+      envId: 'kq620lm-d8gabmn69c500f017',
+      httpBase: 'https://kq620lm-d8gabmn69c500f017-1503834579.ap-shanghai.app.tcloudbase.com/api'
+    };
   </script>
   <script src="js/ui.js"></script>
   <script src="js/cloud.js"></script>

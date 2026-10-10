@@ -1,0 +1,19 @@
+{
+  "envId": "kq620lm-d8gabmn69c500f017",
+  "version": "2.0",
+  "functionRoot": "cloud",
+  "functions": [
+    {
+      "name": "api",
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "timeout": 20,
+      "memorySize": 512,
+      "installDependency": false
+    }
+  ],
+  "hosting": {
+    "public": "public",
+    "ignore": [".git", ".tmp", "node_modules", "cloud", ".github", "server.js", "package.json", "README.md", ".gitignore", "cloudbaserc.json"]
+  }
+}

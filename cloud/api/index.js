@@ -1,36 +1,92 @@
-/* 我们的小日子 · 云端接口
+/* 我们的小日子 · 云端接口（CloudBase 云函数）
  *
- * 集合说明（在 CloudBase 控制台创建，权限设为「仅管理端可读写」）：
- *   ld_users    用户：{ _id, phone, nickname, avatar, bookId, tokens: [{t, exp}], createdAt }
- *   ld_books    情侣本：{ _id, code, title, myName, partnerName, anniversary, palette, theme, members: [uid], createdBy, createdAt }
- *   ld_records  记录：{ _id, bookId, authorId, authorName, date, title, note, place, mood, tags, images, createdAt, updatedAt }
- *   ld_sms_codes 验证码：{ _id, phone, code, expiresAt, used }
+ * 存储方案：整份数据作为一个 JSON 文件存放在云存储（love-diary/db.json），
+ * 好处是「开通环境即可用」，不需要额外开通云数据库、也不需要手动建集合。
+ * 数据量小（两人使用），读写一份 JSON 完全够用；照片单独存云存储。
  *
- * 说明：所有读写都通过本云函数完成，服务端负责校验「用户属于哪个本子」。
- * 短信：配置了腾讯云 SMS 环境变量即真实发送，否则为开发模式（验证码在返回值里返回）。
+ * HTTP 访问服务（无需前端登录态即可调用），业务身份用我们自己签发的 token 校验。
  */
 const cloudbase = require('@cloudbase/node-sdk');
+const fs = require('fs');
 
 const app = cloudbase.init({ env: cloudbase.SYMBOL_CURRENT_ENV || process.env.TCB_ENV });
-const db = app.database();
-const _ = db.command;
 
+const DB_PATH = 'love-diary/db.json';
 const TOKEN_DAYS = 30;
 const CODE_MINUTES = 10;
 const MAX_IMAGES = 9;
 
+const EMPTY = { users: [], books: [], records: [], codes: [] };
+
+/* ---------------- 存储：读写云存储里的 JSON ---------------- */
+
+let fileIdPrefix = null;
+
+/* 云存储的 fileID 形如 cloud://<env>.<bucket>/<path>，前缀（含 bucket）需要先探一次 */
+async function fileIDOf(cloudPath) {
+  if (!fileIdPrefix) {
+    const up = await app.uploadFile({
+      cloudPath: 'love-diary/__probe.txt',
+      fileContent: Buffer.from('probe')
+    });
+    const id = up && up.fileID;
+    if (!id || id.indexOf('//') < 0) throw new Error('无法获取云存储信息');
+    // fileID: cloud://<env>.<bucket>/<path> —— 需要协议之后的第一个斜杠
+    const slash = id.indexOf('/', id.indexOf('//') + 2);
+    if (slash < 0) throw new Error('无法解析云存储路径');
+    fileIdPrefix = id.slice(0, slash);
+  }
+  return fileIdPrefix + '/' + cloudPath;
+}
+
+let lastLoadError = null;
+
+async function loadDB() {
+  try {
+    const fileID = await fileIDOf(DB_PATH);
+    const res = await app.getTempFileURL({ fileList: [{ fileID: fileID, maxAge: 60 }] });
+    const url = (res.fileList || [])[0] && (res.fileList || [])[0].tempFileURL;
+    if (!url) {
+      lastLoadError = 'no temp url';
+      return JSON.parse(JSON.stringify(EMPTY));
+    }
+    // 追加时间戳，避免命中 CDN 上的旧版本
+    const sep = url.indexOf('?') >= 0 ? '&' : '?';
+    const resp = await fetch(url + sep + 't=' + Date.now(), {
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    const text = await resp.text();
+    if (!text) {
+      lastLoadError = 'empty file';
+      return JSON.parse(JSON.stringify(EMPTY));
+    }
+    const data = JSON.parse(text);
+    lastLoadError = null;
+    return Object.assign(JSON.parse(JSON.stringify(EMPTY)), data);
+  } catch (err) {
+    lastLoadError = String((err && err.message) || err).slice(0, 200);
+    return JSON.parse(JSON.stringify(EMPTY));
+  }
+}
+
+async function saveDB(data) {
+  const buffer = Buffer.from(JSON.stringify(data), 'utf8');
+  try {
+    await app.uploadFile({
+      cloudPath: DB_PATH,
+      fileContent: buffer,
+      headers: { 'Cache-Control': 'no-cache', 'Content-Type': 'application/json' }
+    });
+  } catch (err) {
+    // 部分版本不支持 headers，降级为普通上传
+    await app.uploadFile({ cloudPath: DB_PATH, fileContent: buffer });
+  }
+}
+
 /* ---------------- 工具 ---------------- */
 
-const COLLECTIONS = {
-  user: 'ld_users',
-  book: 'ld_books',
-  record: 'ld_records',
-  sms: 'ld_sms_codes'
-};
-
-const col = (name) => db.collection(COLLECTIONS[name]);
-
-function randString(len, chars = 'abcdefghijkmnpqrstuvwxyz23456789') {
+function rand(len, chars) {
+  chars = chars || 'abcdefghijkmnpqrstuvwxyz23456789';
   let s = '';
   for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
   return s;
@@ -46,64 +102,74 @@ function fail(message, code) {
   throw err;
 }
 
-/* ---------------- 登录态 ---------------- */
-
-async function userByToken(uid, token) {
-  if (!uid || !token) fail('请先登录', 'NO_AUTH');
-  const res = await col('user').doc(uid).get();
-  const doc = (res.data && res.data[0]) || null;
-  if (!doc) fail('账号不存在', 'NO_USER');
-  const t = (doc.tokens || []).filter((x) => x.t === token)[0];
-  if (!t) fail('登录已失效，请重新登录', 'TOKEN_INVALID');
-  if (t.exp < Date.now()) fail('登录已过期，请重新登录', 'TOKEN_EXPIRED');
-  return doc;
+function publicUser(u) {
+  return { uid: u._id, phone: u.phone, nickname: u.nickname || '', avatar: u.avatar || null, bookId: u.bookId || null };
 }
 
-async function bookOfUser(user) {
-  if (!user.bookId) return null;
-  const res = await col('book').doc(user.bookId).get();
-  const doc = (res.data && res.data[0]) || null;
-  if (doc && (doc.members || []).indexOf(user._id) < 0) return null;
-  return doc;
+function publicBook(b) {
+  if (!b) return null;
+  return {
+    id: b._id,
+    code: b.code,
+    title: b.title || '我们的小日子',
+    myName: b.myName || '我',
+    partnerName: b.partnerName || '宝贝',
+    anniversary: b.anniversary || '',
+    palette: b.palette || 'pink',
+    theme: b.theme || 'light',
+    myAvatar: b.myAvatar || null,
+    partnerAvatar: b.partnerAvatar || null,
+    events: b.events || [],
+    members: b.members || [],
+    createdBy: b.createdBy || ''
+  };
+}
+
+function publicRecord(r) {
+  return {
+    id: r._id,
+    authorId: r.authorId || '',
+    authorName: r.authorName || '',
+    date: r.date,
+    title: r.title || '',
+    note: r.note || '',
+    place: r.place || '',
+    mood: r.mood || 'sweet',
+    tags: r.tags || [],
+    images: r.images || [],
+    createdAt: r.createdAt || 0,
+    updatedAt: r.updatedAt || 0
+  };
+}
+
+function maskPhone(p) {
+  return String(p).replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2');
+}
+
+function findUser(db, uid, token) {
+  if (!uid || !token) fail('请先登录', 'NO_AUTH');
+  const u = db.users.filter((x) => x._id === uid)[0];
+  if (!u) fail('账号不存在，请重新登录', 'NO_USER');
+  const t = (u.tokens || []).filter((x) => x.t === token)[0];
+  if (!t) fail('登录已失效，请重新登录', 'TOKEN_INVALID');
+  if (t.exp < Date.now()) fail('登录已过期，请重新登录', 'TOKEN_EXPIRED');
+  return u;
+}
+
+function bookOfUser(db, u) {
+  if (!u.bookId) return null;
+  const b = db.books.filter((x) => x._id === u.bookId)[0];
+  if (b && (b.members || []).indexOf(u._id) < 0) return null;
+  return b || null;
 }
 
 function issueToken() {
-  return { t: randString(40), exp: Date.now() + TOKEN_DAYS * 86400000 };
-}
-
-function publicUser(user) {
-  return {
-    uid: user._id,
-    phone: user.phone,
-    nickname: user.nickname || '',
-    avatar: user.avatar || null,
-    bookId: user.bookId || null
-  };
-}
-
-function publicBook(book) {
-  if (!book) return null;
-  return {
-    id: book._id,
-    code: book.code,
-    title: book.title || '我们的小日子',
-    myName: book.myName || '我',
-    partnerName: book.partnerName || '宝贝',
-    anniversary: book.anniversary || '',
-    palette: book.palette || 'pink',
-    theme: book.theme || 'light',
-    myAvatar: book.myAvatar || null,
-    partnerAvatar: book.partnerAvatar || null,
-    events: book.events || [],
-    members: book.members || [],
-    createdBy: book.createdBy || ''
-  };
+  return { t: rand(40), exp: Date.now() + TOKEN_DAYS * 86400000 };
 }
 
 /* ---------------- 短信 ---------------- */
 
 async function sendRealSms(phone, code) {
-  // 生产模式：需要在云函数环境变量里配置腾讯云短信（SMS 需要已审核的签名与模板）
   const { SMS_SECRET_ID, SMS_SECRET_KEY, SMS_SDK_APP_ID, SMS_TEMPLATE_ID, SMS_SIGN } = process.env;
   if (!SMS_SECRET_ID || !SMS_SECRET_KEY) return false;
   try {
@@ -130,129 +196,98 @@ async function sendRealSms(phone, code) {
 /* ---------------- 接口实现 ---------------- */
 
 const handlers = {
+  /* 服务自检 */
+  async ping() {
+    const db = await loadDB();
+    return {
+      ok: true,
+      users: db.users.length,
+      books: db.books.length,
+      records: db.records.length,
+      smsReady: Boolean(process.env.SMS_SECRET_ID && process.env.SMS_SECRET_KEY)
+    };
+  },
+
   /* 发送验证码 */
   async sendCode(payload) {
+    const db = await loadDB();
     const phone = String(payload.phone || '').replace(/\D/g, '');
     if (!/^1\d{10}$/.test(phone)) fail('请输入正确的手机号', 'BAD_PHONE');
 
-    const code = numCode();
     const now = Date.now();
+    const recent = db.codes.filter((c) => c.phone === phone).pop();
+    if (recent && now - (recent.createdAt || 0) < 60000) fail('验证码已发送，请稍后再试', 'TOO_FAST');
 
-    // 同一个号码 60 秒内只发一次
-    const recent = await col('sms')
-      .where({ phone: phone, expiresAt: _.gt(now - 60 * 1000) })
-      .orderBy('createdAt', 'desc')
-      .limit(1)
-      .get();
-    if (recent.data && recent.data.length && now - (recent.data[0].createdAt || 0) < 60000) {
-      fail('验证码已发送，请稍候再试', 'TOO_FAST');
-    }
-
-    await col('sms').add({
-      phone: phone,
-      code: code,
-      used: false,
-      expiresAt: now + CODE_MINUTES * 60000,
-      createdAt: now
-    });
+    const code = numCode();
+    db.codes.push({ _id: 'c_' + rand(8), phone: phone, code: code, used: false, expiresAt: now + CODE_MINUTES * 60000, createdAt: now });
+    if (db.codes.length > 200) db.codes = db.codes.slice(-200);
+    await saveDB(db);
 
     const sent = await sendRealSms(phone, code);
-
-    return {
-      sent: sent,
-      expiresInMinutes: CODE_MINUTES,
-      // 未配置短信服务时返回验证码，方便调试（正式上线配置短信后会移除）
-      devCode: sent ? undefined : code
-    };
+    return { sent: sent, expiresInMinutes: CODE_MINUTES, devCode: sent ? undefined : code };
   },
 
   /* 验证码登录 / 注册 */
   async signIn(payload) {
+    const db = await loadDB();
     const phone = String(payload.phone || '').replace(/\D/g, '');
     const code = String(payload.code || '').trim();
     if (!/^1\d{10}$/.test(phone)) fail('请输入正确的手机号', 'BAD_PHONE');
     if (!/^\d{6}$/.test(code)) fail('请输入 6 位验证码', 'BAD_CODE');
 
     const now = Date.now();
-    const rec = await col('sms')
-      .where({ phone: phone, code: code, used: false })
-      .orderBy('createdAt', 'desc')
-      .limit(1)
-      .get();
-    const row = (rec.data && rec.data[0]) || null;
+    const rows = db.codes.filter((c) => c.phone === phone && c.code === code && !c.used);
+    const row = rows[rows.length - 1];
     if (!row) fail('验证码不正确', 'CODE_WRONG');
     if (row.expiresAt < now) fail('验证码已过期', 'CODE_EXPIRED');
-    await col('sms').doc(row._id).update({ used: true });
+    row.used = true;
 
-    let user = null;
-    const existed = await col('user').where({ phone: phone }).limit(1).get();
-    user = (existed.data && existed.data[0]) || null;
-
+    let u = db.users.filter((x) => x.phone === phone)[0];
     const token = issueToken();
-    if (!user) {
-      const uid = 'u_' + Date.now().toString(36) + randString(8);
-      await col('user').doc(uid).set({
-        _id: uid,
-        phone: phone,
-        nickname: '',
-        avatar: null,
-        bookId: null,
-        tokens: [token],
-        createdAt: now
-      });
-      user = { _id: uid, phone: phone, nickname: '', avatar: null, bookId: null };
+    if (!u) {
+      u = { _id: 'u_' + now.toString(36) + rand(8), phone: phone, nickname: '', avatar: null, bookId: null, tokens: [token], createdAt: now };
+      db.users.push(u);
     } else {
-      const tokens = (user.tokens || []).filter((x) => x.exp > now).slice(-4);
-      tokens.push(token);
-      await col('user').doc(user._id).update({ tokens: tokens });
-      user.tokens = tokens;
+      u.tokens = (u.tokens || []).filter((x) => x.exp > now).slice(-4);
+      u.tokens.push(token);
     }
-
-    const me = await col('user').doc(user._id).get();
-    const doc = (me.data && me.data[0]) || user;
-    return { uid: user._id, token: token.t, expiresAt: token.exp, user: publicUser(doc) };
+    await saveDB(db);
+    return { uid: u._id, token: token.t, expiresAt: token.exp, user: publicUser(u) };
   },
 
-  /* 退出登录 */
   async signOut(payload) {
-    const user = await userByToken(payload.uid, payload.token);
-    const tokens = (user.tokens || []).filter((x) => x.t !== payload.token);
-    await col('user').doc(user._id).update({ tokens: tokens });
+    const db = await loadDB();
+    const u = findUser(db, payload.uid, payload.token);
+    u.tokens = (u.tokens || []).filter((x) => x.t !== payload.token);
+    await saveDB(db);
     return { ok: true };
   },
 
-  /* 我的资料 + 情侣本 */
   async me(payload) {
-    const user = await userByToken(payload.uid, payload.token);
-    return { user: publicUser(user), book: publicBook(await bookOfUser(user)) };
+    const db = await loadDB();
+    const u = findUser(db, payload.uid, payload.token);
+    return { user: publicUser(u), book: publicBook(bookOfUser(db, u)) };
   },
 
-  /* 修改昵称 / 头像 */
   async updateUser(payload) {
-    const user = await userByToken(payload.uid, payload.token);
-    const patch = {};
-    if (payload.nickname != null) patch.nickname = String(payload.nickname).slice(0, 24);
-    if (payload.avatar !== undefined) patch.avatar = payload.avatar;
-    if (Object.keys(patch).length) await col('user').doc(user._id).update(patch);
-    const fresh = await col('user').doc(user._id).get();
-    return { user: publicUser((fresh.data && fresh.data[0]) || user) };
+    const db = await loadDB();
+    const u = findUser(db, payload.uid, payload.token);
+    if (payload.nickname != null) u.nickname = String(payload.nickname).slice(0, 24);
+    if (payload.avatar !== undefined) u.avatar = payload.avatar;
+    await saveDB(db);
+    return { user: publicUser(u) };
   },
 
-  /* 创建情侣本 */
   async createBook(payload) {
-    const user = await userByToken(payload.uid, payload.token);
-    if (user.bookId) {
-      return { book: publicBook(await bookOfUser(user)) };
-    }
-    const id = 'b_' + Date.now().toString(36) + randString(8);
-    const code = randString(6).toUpperCase();
+    const db = await loadDB();
+    const u = findUser(db, payload.uid, payload.token);
+    if (u.bookId) return { book: publicBook(bookOfUser(db, u)) };
 
-    // 邀请码唯一
-    const dup = await col('book').where({ code: code }).limit(1).get();
-    if (dup.data && dup.data.length) return handlers.createBook(payload);
+    let code = rand(6).toUpperCase();
+    while (db.books.some((b) => b.code === code)) code = rand(6).toUpperCase();
 
-    await col('book').doc(id).set({
-      _id: id,
+    const b = {
+      _id: 'b_' + Date.now().toString(36) + rand(8),
       code: code,
       title: payload.title || '我们的小日子',
       myName: payload.myName || '我',
@@ -260,182 +295,177 @@ const handlers = {
       anniversary: payload.anniversary || '',
       palette: payload.palette || 'pink',
       theme: payload.theme || 'light',
-      members: [user._id],
-      createdBy: user._id,
+      events: [],
+      members: [u._id],
+      createdBy: u._id,
       createdAt: Date.now()
-    });
-    await col('user').doc(user._id).update({ bookId: id });
-    const res = await col('book').doc(id).get();
-    return { book: publicBook((res.data && res.data[0]) || null) };
+    };
+    db.books.push(b);
+    u.bookId = b._id;
+    await saveDB(db);
+    return { book: publicBook(b) };
   },
 
-  /* 用邀请码加入情侣本 */
   async joinBook(payload) {
-    const user = await userByToken(payload.uid, payload.token);
+    const db = await loadDB();
+    const u = findUser(db, payload.uid, payload.token);
     const code = String(payload.code || '').trim().toUpperCase();
     if (!code) fail('请输入邀请码', 'NO_CODE');
-
-    const res = await col('book').where({ code: code }).limit(1).get();
-    const book = (res.data && res.data[0]) || null;
-    if (!book) fail('邀请码不存在', 'NO_BOOK');
-    if ((book.members || []).length >= 2 && (book.members || []).indexOf(user._id) < 0) {
-      fail('这个本子已经有两位主人啦', 'BOOK_FULL');
-    }
-
-    const members = Array.from(new Set((book.members || []).concat([user._id])));
-    await col('book').doc(book._id).update({ members: members });
-    await col('user').doc(user._id).update({ bookId: book._id });
-
-    const fresh = await col('book').doc(book._id).get();
-    return { book: publicBook((fresh.data && fresh.data[0]) || null) };
+    const b = db.books.filter((x) => x.code === code)[0];
+    if (!b) fail('邀请码不存在', 'NO_BOOK');
+    if ((b.members || []).length >= 2 && (b.members || []).indexOf(u._id) < 0) fail('这个本子已经有两位主人啦', 'BOOK_FULL');
+    b.members = Array.from(new Set((b.members || []).concat([u._id])));
+    u.bookId = b._id;
+    await saveDB(db);
+    return { book: publicBook(b) };
   },
 
-  /* 退出情侣本 */
   async leaveBook(payload) {
-    const user = await userByToken(payload.uid, payload.token);
-    if (user.bookId) {
-      const res = await col('book').doc(user.bookId).get();
-      const book = (res.data && res.data[0]) || null;
-      if (book) {
-        const members = (book.members || []).filter((m) => m !== user._id);
-        await col('book').doc(book._id).update({ members: members });
-      }
-      await col('user').doc(user._id).update({ bookId: null });
+    const db = await loadDB();
+    const u = findUser(db, payload.uid, payload.token);
+    if (u.bookId) {
+      const b = db.books.filter((x) => x._id === u.bookId)[0];
+      if (b) b.members = (b.members || []).filter((m) => m !== u._id);
+      u.bookId = null;
+      await saveDB(db);
     }
     return { ok: true };
   },
 
-  /* 修改情侣本设置（昵称、纪念日、主题等） */
   async updateBook(payload) {
-    const user = await userByToken(payload.uid, payload.token);
-    const book = await bookOfUser(user);
-    if (!book) fail('还没有加入任何本子', 'NO_BOOK');
-
-    const allowed = ['title', 'myName', 'partnerName', 'anniversary', 'palette', 'theme', 'myAvatar', 'partnerAvatar', 'events'];
-    const patch = {};
-    allowed.forEach((k) => {
-      if (payload[k] !== undefined) patch[k] = payload[k];
+    const db = await loadDB();
+    const u = findUser(db, payload.uid, payload.token);
+    const b = bookOfUser(db, u);
+    if (!b) fail('还没有加入任何本子', 'NO_BOOK');
+    ['title', 'myName', 'partnerName', 'anniversary', 'palette', 'theme', 'myAvatar', 'partnerAvatar', 'events'].forEach((k) => {
+      if (payload[k] !== undefined) b[k] = payload[k];
     });
-    if (Object.keys(patch).length) {
-      patch.updatedAt = Date.now();
-      await col('book').doc(book._id).update(patch);
-    }
-    const fresh = await col('book').doc(book._id).get();
-    return { book: publicBook((fresh.data && fresh.data[0]) || null) };
+    b.updatedAt = Date.now();
+    await saveDB(db);
+    return { book: publicBook(b) };
   },
 
-  /* 拉取本子的全部记录 */
   async listRecords(payload) {
-    const user = await userByToken(payload.uid, payload.token);
-    const book = await bookOfUser(user);
-    if (!book) return { book: null, records: [] };
-
-    const limit = Math.min(500, Number(payload.limit) || 500);
-    const res = await col('record')
-      .where({ bookId: book._id })
-      .orderBy('date', 'desc')
-      .limit(limit)
-      .get();
-    return { book: publicBook(book), records: (res.data || []).map(publicRecord) };
+    const db = await loadDB();
+    const u = findUser(db, payload.uid, payload.token);
+    const b = bookOfUser(db, u);
+    if (!b) return { book: null, records: [] };
+    const list = db.records
+      .filter((r) => r.bookId === b._id)
+      .sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : (y.createdAt || 0) - (x.createdAt || 0)))
+      .slice(0, 500)
+      .map(publicRecord);
+    return { book: publicBook(b), records: list };
   },
 
-  /* 新增 / 修改记录 */
   async upsertRecord(payload) {
-    const user = await userByToken(payload.uid, payload.token);
-    const book = await bookOfUser(user);
-    if (!book) fail('还没有加入任何本子', 'NO_BOOK');
+    const db = await loadDB();
+    const u = findUser(db, payload.uid, payload.token);
+    const b = bookOfUser(db, u);
+    if (!b) fail('还没有加入任何本子', 'NO_BOOK');
 
     const input = payload.record || {};
-    const date = input.date || new Date().toISOString().slice(0, 10);
-    // 前端统一用 id 字段（值就是云存储的 fileID）
-    const images = (input.images || []).slice(0, MAX_IMAGES).map((img) => ({
-      id: img.id || img.fileId || '',
-      name: img.name || '',
-      w: img.w || 0,
-      h: img.h || 0
-    }));
-
     const doc = {
-      bookId: book._id,
-      authorId: user._id,
-      authorName: user.nickname || user.phone.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2'),
-      date: date,
+      date: input.date || new Date().toISOString().slice(0, 10),
       title: String(input.title || '').slice(0, 60),
       note: String(input.note || '').slice(0, 5000),
       place: String(input.place || '').slice(0, 60),
       mood: input.mood || 'sweet',
       tags: (input.tags || []).slice(0, 12).map((t) => String(t).slice(0, 16)),
-      images: images,
+      images: (input.images || []).slice(0, MAX_IMAGES).map((img) => ({
+        id: img.id || img.fileId || '',
+        name: img.name || '',
+        w: img.w || 0,
+        h: img.h || 0
+      })),
+      authorId: u._id,
+      authorName: u.nickname || maskPhone(u.phone),
+      bookId: b._id,
       updatedAt: Date.now()
     };
 
     if (input.id) {
-      // 只能改自己本子里的记录
-      const old = await col('record').doc(input.id).get();
-      const oldDoc = (old.data && old.data[0]) || null;
-      if (!oldDoc || oldDoc.bookId !== book._id) fail('记录不存在', 'NO_RECORD');
-      doc.createdAt = oldDoc.createdAt || Date.now();
-      await col('record').doc(input.id).update(doc);
-      return { record: publicRecord(Object.assign({ _id: input.id }, doc)) };
+      const old = db.records.filter((r) => r._id === input.id)[0];
+      if (!old || old.bookId !== b._id) fail('记录不存在', 'NO_RECORD');
+      Object.assign(old, doc);
+      old.createdAt = old.createdAt || Date.now();
+      await saveDB(db);
+      return { record: publicRecord(old) };
     }
 
-    doc.createdAt = Date.now();
-    const added = await col('record').add(doc);
-    return { record: publicRecord(Object.assign({ _id: added.id }, doc)) };
+    const rec = Object.assign({ _id: 'r_' + Date.now().toString(36) + rand(8), createdAt: Date.now() }, doc);
+    db.records.push(rec);
+    await saveDB(db);
+    return { record: publicRecord(rec) };
   },
 
-  /* 删除记录 */
   async removeRecord(payload) {
-    const user = await userByToken(payload.uid, payload.token);
-    const book = await bookOfUser(user);
-    if (!book) fail('还没有加入任何本子', 'NO_BOOK');
-    const res = await col('record').doc(payload.id).get();
-    const doc = (res.data && res.data[0]) || null;
-    if (!doc || doc.bookId !== book._id) fail('记录不存在', 'NO_RECORD');
-    await col('record').doc(payload.id).remove();
-    return { ok: true, images: doc.images || [] };
+    const db = await loadDB();
+    const u = findUser(db, payload.uid, payload.token);
+    const b = bookOfUser(db, u);
+    const rec = db.records.filter((r) => r._id === payload.id)[0];
+    if (!b || !rec || rec.bookId !== b._id) fail('记录不存在', 'NO_RECORD');
+    db.records = db.records.filter((r) => r._id !== payload.id);
+    await saveDB(db);
+    return { ok: true, images: rec.images || [] };
   },
 
-  /* 图片临时下载地址（fileID 有有效期，按需换取） */
+  /* 上传图片 */
+  async uploadImage(payload) {
+    const db = await loadDB();
+    const u = findUser(db, payload.uid, payload.token);
+    const b64 = String(payload.base64 || '');
+    if (!b64) fail('没有图片内容', 'NO_FILE');
+    const clean = b64.indexOf(',') >= 0 ? b64.slice(b64.indexOf(',') + 1) : b64;
+    const buffer = Buffer.from(clean, 'base64');
+    if (buffer.length > 8 * 1024 * 1024) fail('图片太大了', 'TOO_LARGE');
+
+    const ext = (String(payload.name || '').split('.').pop() || 'jpg').toLowerCase();
+    const cloudPath = 'love-diary/' + u._id + '/' + Date.now() + '_' + rand(8) + '.' + ext;
+    const res = await app.uploadFile({ cloudPath: cloudPath, fileContent: buffer });
+    if (!res || !res.fileID) fail('图片上传失败', 'UPLOAD_FAIL');
+    return { fileId: res.fileID };
+  },
+
+  /* 图片临时下载地址 */
   async getFileUrl(payload) {
-    await userByToken(payload.uid, payload.token);
+    const db = await loadDB();
+    findUser(db, payload.uid, payload.token);
     const fileIds = (payload.fileIds || []).filter(Boolean);
     if (!fileIds.length) return { urls: {} };
     const res = await app.getTempFileURL({
-      fileList: fileIds.map((id) => ({ fileID: id }))
+      fileList: fileIds.map((id) => ({ fileID: id, maxAge: 3600 }))
     });
     const map = {};
     (res.fileList || []).forEach((it) => {
-      if (it.fileID) map[it.fileID] = it.tempFileURL || '';
+      if (it && it.fileID) map[it.fileID] = it.tempFileURL || '';
     });
     return { urls: map };
   }
 };
 
-function publicRecord(doc) {
-  return {
-    id: doc._id,
-    authorId: doc.authorId || '',
-    authorName: doc.authorName || '',
-    date: doc.date,
-    title: doc.title || '',
-    note: doc.note || '',
-    place: doc.place || '',
-    mood: doc.mood || 'sweet',
-    tags: doc.tags || [],
-    images: doc.images || [],
-    createdAt: doc.createdAt || 0,
-    updatedAt: doc.updatedAt || 0
-  };
+/* 兼容两种调用方式：SDK callFunction 直接传对象；HTTP 访问服务放在 body 里 */
+function normalize(raw) {
+  let e = raw || {};
+  if (typeof e === 'string') {
+    try { e = JSON.parse(e); } catch (err) { e = {}; }
+  }
+  if (e.body && typeof e.body === 'string') {
+    try {
+      const parsed = JSON.parse(e.body);
+      if (parsed && typeof parsed === 'object') e = parsed;
+    } catch (err) { /* 保持原样 */ }
+  }
+  if (e.data && typeof e.data === 'object' && !e.action) e = e.data;
+  return e;
 }
 
-/* ---------------- 入口 ---------------- */
-
-exports.main = async (event) => {
+exports.main = async (rawEvent) => {
+  const event = normalize(rawEvent);
   const action = (event && event.action) || '';
   const payload = (event && event.payload) || {};
   const handler = handlers[action];
-  if (!handler) return { ok: false, error: '未知的操作：' + action };
+  if (!handler) return { ok: false, error: '未知的操作：' + action, apiCode: 'NO_ACTION' };
 
   try {
     const data = await handler(payload);
@@ -443,7 +473,7 @@ exports.main = async (event) => {
   } catch (err) {
     return {
       ok: false,
-      error: err && err.message ? err.message : '服务器有点忙',
+      error: (err && err.message) || '服务器有点忙',
       apiCode: (err && err.apiCode) || 'SERVER_ERROR'
     };
   }

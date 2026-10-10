@@ -193,7 +193,8 @@
   }
 
   function bind(body) {
-    body.addEventListener('click', (e) => {
+    // 用赋值方式绑定，避免每次 show() 都叠加一层监听
+    body.onclick = (e) => {
       const tab = e.target.closest('[data-step]');
       if (tab) {
         step = tab.dataset.step;
@@ -219,14 +220,14 @@
       if (e.target.closest('#obLogout')) {
         AuthView.signOut();
       }
-    });
+    };
 
-    body.addEventListener('keydown', (e) => {
+    body.onkeydown = (e) => {
       if (e.key !== 'Enter') return;
       if (e.target.id === 'authPhone') return onSendCode(body, body.querySelector('#authSend'));
       if (e.target.id === 'authCode') return onLogin(body, body.querySelector('#authLogin'));
       if (e.target.id === 'obCode') return onJoin(body, body.querySelector('#obJoin'));
-    });
+    };
   }
 
   const AuthView = {
