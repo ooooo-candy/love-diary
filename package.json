@@ -2,8 +2,11 @@
   "name": "love-diary",
   "version": "1.0.0",
   "private": true,
-  "description": "我们的小日子 · 恋爱记录 App（纯前端，零依赖）",
+  "description": "我们的小日子 · 恋爱记录 App（云端共享版）",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "deploy:fn": "tcb fn deploy api --force",
+    "publish": "node scripts/publish.js",
+    "release": "npm run deploy:fn && npm run publish"
   }
 }

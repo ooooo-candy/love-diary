@@ -14,14 +14,29 @@ npm start        # 等价于 node server.js
 > 也可以直接双击 `index.html` 打开，功能同样可用（此时浏览器不允许使用 IndexedDB，
 > 会自动降级为压缩后存 localStorage，照片容量较小，建议用 `npm start` 方式运行）。
 
-## 部署到 GitHub Pages（手机随时可用）
+## 云端版（推荐）：手机随时随地用，两个人共享
 
-仓库里已带自动部署工作流 `.github/workflows/deploy.yml`：推送到 `main` 分支后会自动发布，
-访问地址为 `https://<你的用户名>.github.io/<仓库名>/`（手机浏览器打开后「添加到主屏幕」即可当 App 用）。
+当前已部署在腾讯云 CloudBase：
 
-首次推送后到仓库 **Settings → Pages → Build and deployment → Source** 确认选择 `GitHub Actions`。
+- **线上地址**：https://kq620lm-d8gabmn69c500f017-1503834579.tcloudbaseapp.com/
+  （首次打开会出现一次「测试域名提示」，点「确定访问」即可；绑定自己的域名后不再出现）
+- **后端**：云函数 `api` + 云存储（数据存成 `love-diary/db.json`，照片存 `love-diary/<uid>/`）
 
-> 项目全部使用相对路径，因此部署在 `/<仓库名>/` 子目录下也能正常工作（含 Service Worker 离线缓存）。
+### 两个人的使用方式
+
+1. 一方：手机号登录 → 创建本子 → 在「我们」页复制邀请码
+2. 另一方：手机号登录 → 「用邀请码加入」→ 输入邀请码
+3. 之后双方看到同一份记录和照片，每条记录会显示是谁写的
+
+### 改代码后如何发布
+
+```bash
+npm run deploy:fn     # 只改了云函数时
+npm run publish       # 只改了前端时
+npm run release       # 两个都发
+```
+
+详细的部署与短信开通步骤见 [`cloud/README.md`](cloud/README.md)。
 
 ## 功能
 
