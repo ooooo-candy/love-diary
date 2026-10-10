@@ -142,6 +142,75 @@
       return { uid: u._id, token: token.t, expiresAt: token.exp, user: publicUser(u) };
     },
 
+    async register(p) {
+      const phone = String(p.phone || '').replace(/\D/g, '');
+      const code = String(p.code || '').trim();
+      const password = String(p.password || '');
+      if (!/^1\d{10}$/.test(phone)) fail('请输入正确的手机号', 'BAD_PHONE');
+      if (password.length < 6) fail('密码至少 6 位', 'WEAK_PASSWORD');
+      const existed = db.users.filter((x) => x.phone === phone)[0];
+      if (existed && existed.password) fail('该手机号已经注册过了，直接登录吧', 'PHONE_TAKEN');
+      const rows = db.codes.filter((x) => x.phone === phone && x.code === code && !x.used);
+      const row = rows[rows.length - 1];
+      if (!row) fail('验证码不正确', 'CODE_WRONG');
+      if (row.expiresAt < now()) fail('验证码已过期', 'CODE_EXPIRED');
+      row.used = true;
+
+      const token = { t: rand(40), exp: now() + TOKEN_DAYS * 86400000 };
+      let u = existed;
+      if (!u) {
+        u = { _id: 'u_' + rand(10), phone: phone, nickname: '', avatar: null, bookId: null, tokens: [], createdAt: now() };
+        db.users.push(u);
+      }
+      u.password = password; // 本地演示模式，仅存在本机
+      u.tokens = (u.tokens || []).filter((x) => x.exp > now()).slice(-4);
+      u.tokens.push(token);
+      save();
+      return { uid: u._id, token: token.t, expiresAt: token.exp, user: publicUser(u) };
+    },
+
+    async login(p) {
+      const phone = String(p.phone || '').replace(/\D/g, '');
+      const password = String(p.password || '');
+      const u = db.users.filter((x) => x.phone === phone)[0];
+      if (!u) fail('这个手机号还没注册', 'NO_USER');
+      if (!u.password) fail('这个账号还没设置密码，请点「忘记密码」设置一个', 'NO_PASSWORD');
+      if (u.password !== password) fail('手机号或密码不正确', 'BAD_PASSWORD');
+      const token = { t: rand(40), exp: now() + TOKEN_DAYS * 86400000 };
+      u.tokens = (u.tokens || []).filter((x) => x.exp > now()).slice(-4);
+      u.tokens.push(token);
+      save();
+      return { uid: u._id, token: token.t, expiresAt: token.exp, user: publicUser(u) };
+    },
+
+    async resetPassword(p) {
+      const phone = String(p.phone || '').replace(/\D/g, '');
+      const code = String(p.code || '').trim();
+      const password = String(p.password || '');
+      if (password.length < 6) fail('密码至少 6 位', 'WEAK_PASSWORD');
+      const u = db.users.filter((x) => x.phone === phone)[0];
+      if (!u) fail('这个手机号还没注册', 'NO_USER');
+      const rows = db.codes.filter((x) => x.phone === phone && x.code === code && !x.used);
+      const row = rows[rows.length - 1];
+      if (!row) fail('验证码不正确', 'CODE_WRONG');
+      if (row.expiresAt < now()) fail('验证码已过期', 'CODE_EXPIRED');
+      row.used = true;
+      u.password = password;
+      const token = { t: rand(40), exp: now() + TOKEN_DAYS * 86400000 };
+      u.tokens = [token];
+      save();
+      return { uid: u._id, token: token.t, expiresAt: token.exp, user: publicUser(u) };
+    },
+
+    async changePassword(p) {
+      const u = findUser(p.uid, p.token);
+      if (String(p.password || '').length < 6) fail('密码至少 6 位', 'WEAK_PASSWORD');
+      if (u.password && u.password !== p.oldPassword) fail('原密码不正确', 'BAD_PASSWORD');
+      u.password = String(p.password);
+      save();
+      return { ok: true };
+    },
+
     async signOut(p) {
       const u = findUser(p.uid, p.token);
       u.tokens = (u.tokens || []).filter((x) => x.t !== p.token);

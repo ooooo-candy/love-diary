@@ -8,6 +8,7 @@
  */
 const cloudbase = require('@cloudbase/node-sdk');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const app = cloudbase.init({ env: cloudbase.SYMBOL_CURRENT_ENV || process.env.TCB_ENV });
 
@@ -94,6 +95,43 @@ function rand(len, chars) {
 
 function numCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+/* ---------------- 密码 ---------------- */
+
+function assertPassword(password) {
+  const p = String(password || '');
+  if (p.length < 6) fail('密码至少 6 位', 'WEAK_PASSWORD');
+  if (p.length > 32) fail('密码最长 32 位', 'LONG_PASSWORD');
+  return p;
+}
+
+/* 加盐哈希，明文不落库 */
+function makePassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(String(password), salt, 32).toString('hex');
+  return { passwordSalt: salt, passwordHash: hash };
+}
+
+function checkPassword(user, password) {
+  if (!user || !user.passwordHash || !user.passwordSalt) return false;
+  try {
+    const hash = crypto.scryptSync(String(password || ''), user.passwordSalt, 32);
+    const saved = Buffer.from(user.passwordHash, 'hex');
+    return hash.length === saved.length && crypto.timingSafeEqual(hash, saved);
+  } catch (err) {
+    return false;
+  }
+}
+
+/* 校验并消费一条验证码 */
+function consumeCode(db, phone, code) {
+  const now = Date.now();
+  const rows = db.codes.filter((c) => c.phone === phone && c.code === code && !c.used);
+  const row = rows[rows.length - 1];
+  if (!row) fail('验证码不正确', 'CODE_WRONG');
+  if (row.expiresAt < now) fail('验证码已过期', 'CODE_EXPIRED');
+  row.used = true;
 }
 
 function fail(message, code) {
@@ -253,6 +291,91 @@ const handlers = {
     }
     await saveDB(db);
     return { uid: u._id, token: token.t, expiresAt: token.exp, user: publicUser(u) };
+  },
+
+  /* 注册：手机号 + 验证码 + 密码（手机号即登录账号） */
+  async register(payload) {
+    const db = await loadDB();
+    const phone = String(payload.phone || '').replace(/\D/g, '');
+    const code = String(payload.code || '').trim();
+    const password = assertPassword(payload.password);
+    if (!/^1\d{10}$/.test(phone)) fail('请输入正确的手机号', 'BAD_PHONE');
+
+    const existed = db.users.filter((x) => x.phone === phone)[0];
+    if (existed && existed.passwordHash) fail('该手机号已经注册过了，直接登录吧', 'PHONE_TAKEN');
+
+    consumeCode(db, phone, code);
+
+    const now = Date.now();
+    const token = issueToken();
+    let u = existed;
+    if (!u) {
+      u = {
+        _id: 'u_' + now.toString(36) + rand(8),
+        phone: phone,
+        nickname: payload.nickname ? String(payload.nickname).slice(0, 24) : '',
+        avatar: null,
+        bookId: null,
+        tokens: [],
+        createdAt: now
+      };
+      db.users.push(u);
+    }
+    Object.assign(u, makePassword(password));
+    u.tokens = (u.tokens || []).filter((x) => x.exp > now).slice(-4);
+    u.tokens.push(token);
+    await saveDB(db);
+    return { uid: u._id, token: token.t, expiresAt: token.exp, user: publicUser(u) };
+  },
+
+  /* 密码登录 */
+  async login(payload) {
+    const db = await loadDB();
+    const phone = String(payload.phone || '').replace(/\D/g, '');
+    const password = String(payload.password || '');
+    if (!/^1\d{10}$/.test(phone)) fail('请输入正确的手机号', 'BAD_PHONE');
+
+    const u = db.users.filter((x) => x.phone === phone)[0];
+    if (!u) fail('这个手机号还没注册', 'NO_USER');
+    if (!u.passwordHash) fail('这个账号还没设置密码，请点「忘记密码」设置一个', 'NO_PASSWORD');
+    if (!checkPassword(u, password)) fail('手机号或密码不正确', 'BAD_PASSWORD');
+
+    const now = Date.now();
+    const token = issueToken();
+    u.tokens = (u.tokens || []).filter((x) => x.exp > now).slice(-4);
+    u.tokens.push(token);
+    await saveDB(db);
+    return { uid: u._id, token: token.t, expiresAt: token.exp, user: publicUser(u) };
+  },
+
+  /* 忘记密码：手机号 + 验证码 → 重设密码并登录 */
+  async resetPassword(payload) {
+    const db = await loadDB();
+    const phone = String(payload.phone || '').replace(/\D/g, '');
+    const code = String(payload.code || '').trim();
+    const password = assertPassword(payload.password);
+    if (!/^1\d{10}$/.test(phone)) fail('请输入正确的手机号', 'BAD_PHONE');
+
+    const u = db.users.filter((x) => x.phone === phone)[0];
+    if (!u) fail('这个手机号还没注册', 'NO_USER');
+    consumeCode(db, phone, code);
+
+    Object.assign(u, makePassword(password));
+    const token = issueToken();
+    u.tokens = [token]; // 改密码后其它设备需要重新登录
+    await saveDB(db);
+    return { uid: u._id, token: token.t, expiresAt: token.exp, user: publicUser(u) };
+  },
+
+  /* 修改密码（已登录时使用） */
+  async changePassword(payload) {
+    const db = await loadDB();
+    const u = findUser(db, payload.uid, payload.token);
+    const next = assertPassword(payload.password);
+    if (u.passwordHash && !checkPassword(u, payload.oldPassword)) fail('原密码不正确', 'BAD_PASSWORD');
+    Object.assign(u, makePassword(next));
+    await saveDB(db);
+    return { ok: true };
   },
 
   async signOut(payload) {

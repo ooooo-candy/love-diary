@@ -1,16 +1,34 @@
 {
+  "id": "/",
   "name": "我们的小日子 · 恋爱记录",
   "short_name": "小日子",
   "description": "一个只属于你们两个人的恋爱记录本：写记录、传照片、数着日子过日子。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
   "background_color": "#fff6f9",
   "theme_color": "#ff6b9d",
+  "lang": "zh-CN",
+  "categories": ["lifestyle", "social"],
   "icons": [
     { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
     { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "写一条记录",
+      "short_name": "写记录",
+      "url": "./?action=new",
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "看相册",
+      "short_name": "相册",
+      "url": "./?tab=album",
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }]
+    }
   ]
 }

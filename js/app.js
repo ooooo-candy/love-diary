@@ -588,6 +588,13 @@
           </div>
           <div class="setting-row">
             <div class="setting-row__main">
+              <div class="setting-row__label">修改密码</div>
+              <div class="setting-row__hint">定期换一个更安全</div>
+            </div>
+            <button class="btn btn--ghost btn--sm" type="button" data-act="change-pwd">修改</button>
+          </div>
+          <div class="setting-row">
+            <div class="setting-row__main">
               <div class="setting-row__label">清空本机数据</div>
               <div class="setting-row__hint">清除这台设备上的缓存并回到登录页</div>
             </div>
@@ -1242,6 +1249,55 @@
     input.click();
   }
 
+  /* 修改密码 */
+  function openChangePassword() {
+    const html = `
+      <div class="sheet__title">
+        <span>修改密码</span>
+        <button class="mini-btn" type="button" data-act="close-sheet">✕</button>
+      </div>
+      <div class="field">
+        <label class="field__label" for="cpOld">原密码</label>
+        <input class="input" id="cpOld" type="password" maxlength="32" placeholder="当前使用的密码" />
+      </div>
+      <div class="field">
+        <label class="field__label" for="cpNew">新密码</label>
+        <input class="input" id="cpNew" type="password" maxlength="32" placeholder="至少 6 位" />
+      </div>
+      <div class="field">
+        <label class="field__label" for="cpNew2">确认新密码</label>
+        <input class="input" id="cpNew2" type="password" maxlength="32" placeholder="再输入一次" />
+      </div>
+      <div class="row" style="margin-top:18px">
+        <button class="btn btn--ghost" type="button" data-act="close-sheet">取消</button>
+        <button class="btn btn--primary" type="button" data-act="save-pwd">确认修改</button>
+      </div>
+      <div class="drop-hint" style="margin-top:12px">忘记原密码？退出登录后用「忘记密码」重设即可</div>
+    `;
+    const body = UI.openSheet(html);
+
+    body.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-act="save-pwd"]');
+      if (!btn) return;
+      const oldPwd = body.querySelector('#cpOld').value;
+      const pwd = body.querySelector('#cpNew').value;
+      const pwd2 = body.querySelector('#cpNew2').value;
+      if (String(pwd).length < 6) return UI.toast('新密码至少 6 位');
+      if (pwd !== pwd2) return UI.toast('两次输入的新密码不一样');
+      btn.disabled = true;
+      btn.textContent = '提交中…';
+      try {
+        await Cloud.api.changePassword(oldPwd, pwd);
+        UI.closeSheet();
+        UI.toast('密码已修改 ❤');
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = '确认修改';
+        UI.toast(err.message || '修改失败');
+      }
+    });
+  }
+
   async function copyInviteCode() {
     const code = Store.getProfile().code;
     if (!code) return UI.toast('还没有邀请码');
@@ -1447,6 +1503,7 @@
     if (act === 'import') return importBackup();
     if (act === 'clear') return clearAll();
     if (act === 'logout') return AuthView.signOut();
+    if (act === 'change-pwd') return openChangePassword();
     if (act === 'copy-code') return copyInviteCode();
     if (act === 'sync') return refresh();
     if (act === 'mood') {
@@ -1522,8 +1579,23 @@
 
     if (Store.isSignedIn() && Store.getBook()) {
       enterApp();
+      handleLaunchParams();
     } else {
       AuthView.show();
     }
   });
+
+  /* 支持从桌面快捷方式直接进入某个功能：?action=new 写记录 / ?tab=album 相册 */
+  function handleLaunchParams() {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    const action = params.get('action');
+    if (tab) switchTab(tab);
+    if (action === 'new') setTimeout(() => openCompose(null), 600);
+    if (tab || action) {
+      try {
+        history.replaceState(null, '', location.pathname);
+      } catch (err) { /* 忽略 */ }
+    }
+  }
 })();

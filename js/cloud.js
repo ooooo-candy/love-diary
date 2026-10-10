@@ -128,6 +128,28 @@
 
     api: {
       sendCode: (phone) => Cloud.call('sendCode', { phone: phone }),
+
+      register: (phone, code, password) =>
+        Cloud.call('register', { phone: phone, code: code, password: password }).then((d) => {
+          Cloud.setSession({ uid: d.uid, token: d.token });
+          return d;
+        }),
+
+      login: (phone, password) =>
+        Cloud.call('login', { phone: phone, password: password }).then((d) => {
+          Cloud.setSession({ uid: d.uid, token: d.token });
+          return d;
+        }),
+
+      resetPassword: (phone, code, password) =>
+        Cloud.call('resetPassword', { phone: phone, code: code, password: password }).then((d) => {
+          Cloud.setSession({ uid: d.uid, token: d.token });
+          return d;
+        }),
+
+      changePassword: (oldPassword, password) =>
+        Cloud.call('changePassword', { oldPassword: oldPassword, password: password }),
+
       signIn: (phone, code) =>
         Cloud.call('signIn', { phone: phone, code: code }).then((d) => {
           Cloud.setSession({ uid: d.uid, token: d.token });

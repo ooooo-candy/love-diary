@@ -64,6 +64,7 @@ html, body {
 }
 
 body {
+  overflow: hidden; /* 滚动交给内部容器，避免手机端双滚动/滚不动 */
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei",
     "Helvetica Neue", Helvetica, Arial, sans-serif;
   color: var(--text);
@@ -83,7 +84,8 @@ img { display: block; max-width: 100%; }
 .app {
   position: relative;
   max-width: 480px;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;           /* 固定视口高度：内容超出时由 .main 内部滚动 */
   margin: 0 auto;
   background: var(--bg);
   box-shadow: 0 0 0 1px var(--border), 0 30px 80px -40px rgba(0, 0, 0, .35);
@@ -123,10 +125,11 @@ img { display: block; max-width: 100%; }
 
 .main {
   flex: 1;
+  min-height: 0;                 /* flex 子项要能滚动的关键 */
+  -webkit-overflow-scrolling: touch;
   overflow-y: auto;
   overscroll-behavior-y: contain;
   padding: 14px 16px calc(var(--tab-h) + 28px + var(--safe-b));
-  scroll-behavior: smooth;
 }
 
 .view { animation: fadeUp .35s ease both; }
@@ -547,7 +550,12 @@ img { display: block; max-width: 100%; }
 }
 .sheet__bar { padding: 10px 0 4px; display: grid; place-items: center; }
 .sheet__bar span { width: 42px; height: 4px; border-radius: 999px; background: var(--border); }
-.sheet__body { overflow-y: auto; padding: 6px 18px calc(22px + var(--safe-b)); }
+.sheet__body {
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+  padding: 6px 18px calc(22px + var(--safe-b));
+}
 
 .sheet__title {
   display: flex; align-items: center; justify-content: space-between;
@@ -712,6 +720,20 @@ html.is-guest .main { padding-top: 8px; }
   padding: 9px 12px; border-radius: 10px;
 }
 .auth__tip b { color: var(--brand); }
+
+.auth__links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+  text-align: center;
+}
+.auth__links button {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand);
+  padding: 5px 0;
+}
 
 /* ---------- 邀请码 ---------- */
 .invite {
