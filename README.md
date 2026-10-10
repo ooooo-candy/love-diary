@@ -14,6 +14,15 @@ npm start        # 等价于 node server.js
 > 也可以直接双击 `index.html` 打开，功能同样可用（此时浏览器不允许使用 IndexedDB，
 > 会自动降级为压缩后存 localStorage，照片容量较小，建议用 `npm start` 方式运行）。
 
+## 部署到 GitHub Pages（手机随时可用）
+
+仓库里已带自动部署工作流 `.github/workflows/deploy.yml`：推送到 `main` 分支后会自动发布，
+访问地址为 `https://<你的用户名>.github.io/<仓库名>/`（手机浏览器打开后「添加到主屏幕」即可当 App 用）。
+
+首次推送后到仓库 **Settings → Pages → Build and deployment → Source** 确认选择 `GitHub Actions`。
+
+> 项目全部使用相对路径，因此部署在 `/<仓库名>/` 子目录下也能正常工作（含 Service Worker 离线缓存）。
+
 ## 功能
 
 - **首页**：恋爱天数大卡片、重要日子倒计时（在一起周年 / 自定义纪念日、生日）、今日提醒、最近记录
