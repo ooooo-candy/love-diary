@@ -1,0 +1,9 @@
+{
+  "name": "love-diary-api",
+  "version": "1.0.0",
+  "description": "我们的小日子 · 云端接口（账号 / 情侣本 / 记录 / 照片）",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^2.8.1"
+  }
+}

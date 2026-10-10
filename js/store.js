@@ -1,115 +1,23 @@
-/* 数据层：记录 + 图片
- * 图片优先存入 IndexedDB（容量大）；若浏览器/协议不支持（如 file:// 直开），
- * 自动降级为压缩后的 base64 存入 localStorage。两种模式对上层接口完全一致。
+/* 数据层：云端优先 + 本地缓存
+ *
+ * - 需要一个账号才能使用（手机号验证码登录），两个人加入同一个「情侣本」后数据完全共享
+ * - 读取走内存 / localStorage 缓存（秒开、离线可看），写入先更新本地再同步云端
+ * - 照片压缩后上传到云存储，只保存 fileId，展示时按需换取临时地址
  */
 (function (global) {
   'use strict';
 
-  const LS_KEY = 'love-diary:v1';
-  const DB_NAME = 'love-diary';
-  const DB_VERSION = 1;
-  const STORE_IMAGES = 'images';
+  const CACHE_KEY = 'love-diary:cache';
+  const LS_LEGACY = 'love-diary:v1';
 
-  const DEFAULT_PROFILE = {
-    myName: '我',
-    partnerName: '宝贝',
-    anniversary: UI.todayStr(),
-    myAvatar: null,
-    partnerAvatar: null,
-    palette: 'pink',
-    theme: 'light'
+  const state = {
+    me: null,     // { uid, phone, nickname, avatar, bookId }
+    book: null,   // { id, code, title, myName, partnerName, anniversary, palette, theme, myAvatar, partnerAvatar, members }
+    records: []   // [{ id, authorId, authorName, date, title, note, place, mood, tags, images, createdAt }]
   };
 
-  let db = null;
-  let idbReady = false;
-  let data = { profile: null, records: [] };
-  let lastGood = null;
-  const urlCache = new Map();
+  const previewCache = new Map();
   const listeners = [];
-
-  /* ---------------- IndexedDB ---------------- */
-
-  function openDB() {
-    return new Promise((resolve, reject) => {
-      if (!global.indexedDB) return reject(new Error('no indexedDB'));
-      let req;
-      try {
-        req = indexedDB.open(DB_NAME, DB_VERSION);
-      } catch (err) {
-        return reject(err);
-      }
-      req.onupgradeneeded = () => {
-        const d = req.result;
-        if (!d.objectStoreNames.contains(STORE_IMAGES)) {
-          d.createObjectStore(STORE_IMAGES, { keyPath: 'id' });
-        }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error || new Error('indexedDB open failed'));
-      req.onblocked = () => reject(new Error('indexedDB blocked'));
-    });
-  }
-
-  function idbPut(record) {
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_IMAGES, 'readwrite');
-      tx.objectStore(STORE_IMAGES).put(record);
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
-  }
-
-  function idbGet(id) {
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_IMAGES, 'readonly');
-      const req = tx.objectStore(STORE_IMAGES).get(id);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  function idbDelete(ids) {
-    return new Promise((resolve) => {
-      const tx = db.transaction(STORE_IMAGES, 'readwrite');
-      const os = tx.objectStore(STORE_IMAGES);
-      ids.forEach((id) => os.delete(id));
-      tx.oncomplete = resolve;
-      tx.onerror = () => resolve();
-    });
-  }
-
-  function idbAll() {
-    return new Promise((resolve) => {
-      const tx = db.transaction(STORE_IMAGES, 'readonly');
-      const req = tx.objectStore(STORE_IMAGES).getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => resolve([]);
-    });
-  }
-
-  /* ---------------- 持久化 ---------------- */
-
-  function persist() {
-    let str;
-    try {
-      str = JSON.stringify(data);
-    } catch (err) {
-      throw new Error('DATA_INVALID');
-    }
-    try {
-      localStorage.setItem(LS_KEY, str);
-      lastGood = str;
-    } catch (err) {
-      if (lastGood) {
-        try {
-          data = JSON.parse(lastGood);
-          localStorage.setItem(LS_KEY, lastGood);
-        } catch (e) { /* 忽略 */ }
-      }
-      throw new Error('STORAGE_FULL');
-    }
-  }
 
   function emit() {
     listeners.forEach((fn) => {
@@ -117,30 +25,28 @@
     });
   }
 
-  function commit() {
-    persist();
-    emit();
+  function persistCache() {
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ me: state.me, book: state.book, records: state.records }));
+    } catch (err) { /* 缓存写满忽略 */ }
   }
 
-  function load() {
-    let raw = null;
+  function restoreCache() {
     try {
-      raw = localStorage.getItem(LS_KEY);
-    } catch (err) {
-      raw = null;
-    }
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        data = {
-          profile: Object.assign({}, DEFAULT_PROFILE, parsed.profile || {}),
-          records: Array.isArray(parsed.records) ? parsed.records : []
-        };
-        lastGood = raw;
-        return;
-      } catch (err) { /* 数据损坏，重置 */ }
-    }
-    data = { profile: Object.assign({}, DEFAULT_PROFILE), records: [] };
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return;
+      const c = JSON.parse(raw);
+      state.me = c.me || null;
+      state.book = c.book || null;
+      state.records = Array.isArray(c.records) ? c.records : [];
+    } catch (err) { /* 忽略 */ }
+  }
+
+  function sorted() {
+    return state.records.slice().sort((a, b) => {
+      if (a.date === b.date) return (b.createdAt || 0) - (a.createdAt || 0);
+      return a.date < b.date ? 1 : -1;
+    });
   }
 
   /* ---------------- 图片处理 ---------------- */
@@ -149,7 +55,7 @@
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file);
       const img = new Image();
-      img.onload = () => resolve({ img, url });
+      img.onload = () => resolve({ img: img, url: url });
       img.onerror = () => {
         URL.revokeObjectURL(url);
         reject(new Error('无法读取该图片：' + (file.name || '')));
@@ -168,20 +74,9 @@
     });
   }
 
-  function blobToDataURL(blob) {
-    return new Promise((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = () => resolve(fr.result);
-      fr.onerror = () => reject(new Error('图片编码失败'));
-      fr.readAsDataURL(blob);
-    });
-  }
-
-  /* 压缩后返回 { blob, w, h } */
   async function compress(file) {
     const { img, url } = await loadImageFromFile(file);
-    const maxEdge = idbReady ? 1600 : 1100;
-    const quality = idbReady ? 0.85 : 0.7;
+    const maxEdge = 1600;
     const sw = img.naturalWidth || img.width;
     const sh = img.naturalHeight || img.height;
     const scale = Math.min(1, maxEdge / Math.max(sw, sh));
@@ -197,120 +92,197 @@
     ctx.drawImage(img, 0, 0, w, h);
     URL.revokeObjectURL(url);
 
-    const blob = await canvasToBlob(canvas, 'image/jpeg', quality);
-    return { blob, w, h };
+    const blob = await canvasToBlob(canvas, 'image/jpeg', 0.85);
+    return { blob: blob, w: w, h: h };
+  }
+
+  function blobToFile(blob, name) {
+    try {
+      return new File([blob], name || 'photo.jpg', { type: blob.type || 'image/jpeg' });
+    } catch (err) {
+      const b = new Blob([blob], { type: blob.type || 'image/jpeg' });
+      b.name = name || 'photo.jpg';
+      return b;
+    }
+  }
+
+  function dataURLToBlob(dataURL) {
+    const parts = String(dataURL).split(',');
+    const mime = (parts[0].match(/:(.*?);/) || [])[1] || 'image/jpeg';
+    const bin = atob(parts[1] || '');
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
   }
 
   /* ---------------- 对外 API ---------------- */
 
   const Store = {
     async init() {
-      load();
-      try {
-        db = await openDB();
-        idbReady = true;
-      } catch (err) {
-        db = null;
-        idbReady = false;
-      }
-      return { idbReady };
+      restoreCache();
+      await Cloud.init();
+      if (Cloud.session) await Store.sync();
+      return Cloud.session ? 'cloud' : 'guest';
     },
 
-    isIdbReady: () => idbReady,
+    isSignedIn: () => Boolean(Cloud.session),
     subscribe(fn) { listeners.push(fn); },
-    onBoardDone: () => Boolean(data.profile && data.profile.anniversary && data.profile.onboarded !== false),
 
-    getProfile() { return data.profile; },
-
-    saveProfile(patch) {
-      data.profile = Object.assign({}, data.profile, patch);
-      commit();
+    /* 拉取云端数据（登录后 / 下拉刷新） */
+    async sync() {
+      if (!Cloud.session) return;
+      try {
+        const me = await Cloud.api.me();
+        state.me = me.user;
+        state.book = me.book;
+        const list = await Cloud.api.listRecords();
+        state.book = list.book || state.book;
+        state.records = list.records || [];
+        persistCache();
+      } catch (err) {
+        if (err && (err.apiCode === 'TOKEN_INVALID' || err.apiCode === 'TOKEN_EXPIRED' || err.apiCode === 'NO_USER')) {
+          Cloud.clearSession();
+        }
+        throw err;
+      }
+      emit();
     },
 
-    listRecords() {
-      return data.records.slice().sort((a, b) => {
-        if (a.date === b.date) return (b.createdAt || 0) - (a.createdAt || 0);
-        return a.date < b.date ? 1 : -1;
+    getMe() { return state.me; },
+    getBook() { return state.book; },
+
+    getProfile() {
+      const b = state.book || {};
+      return {
+        myName: b.myName || '我',
+        partnerName: b.partnerName || '宝贝',
+        anniversary: b.anniversary || UI.todayStr(),
+        myAvatar: b.myAvatar || null,
+        partnerAvatar: b.partnerAvatar || null,
+        palette: b.palette || 'pink',
+        theme: b.theme || 'light',
+        events: b.events || [],
+        onboarded: Boolean(state.book),
+        code: b.code || '',
+        members: b.members || []
+      };
+    },
+
+    async saveProfile(patch) {
+      // 本地先更新，保证即时反馈
+      state.book = Object.assign({}, state.book || {}, patch);
+      persistCache();
+      emit();
+      try {
+        const res = await Cloud.api.updateBook(patch);
+        if (res && res.book) state.book = Object.assign({}, state.book, res.book);
+        persistCache();
+        emit();
+      } catch (err) {
+        UI.toast('设置保存超时，稍后重试');
+        throw err;
+      }
+    },
+
+    listRecords() { return sorted(); },
+
+    getRecord(id) { return state.records.filter((r) => r.id === id)[0] || null; },
+
+    async upsertRecord(rec) {
+      const payload = {
+        id: rec.id || null,
+        date: rec.date,
+        title: rec.title,
+        note: rec.note,
+        place: rec.place,
+        mood: rec.mood,
+        tags: rec.tags,
+        images: (rec.images || []).map((i) => ({ id: i.id, name: i.name, w: i.w, h: i.h }))
+      };
+      const idx = state.records.findIndex((r) => r.id === payload.id);
+      const optimistic = Object.assign({}, rec, {
+        id: payload.id || 'tmp_' + UI.uid(),
+        authorId: (state.me && state.me.uid) || '',
+        authorName: (state.me && (state.me.nickname || state.me.phone)) || '',
+        createdAt: rec.createdAt || Date.now()
       });
+      if (idx >= 0) state.records[idx] = optimistic;
+      else state.records.push(optimistic);
+      persistCache();
+      emit();
+
+      try {
+        const res = await Cloud.api.upsertRecord(payload);
+        const saved = res.record;
+        const at = state.records.findIndex((r) => r.id === optimistic.id);
+        if (at >= 0) state.records[at] = saved;
+        else state.records.push(saved);
+        persistCache();
+        emit();
+        return saved;
+      } catch (err) {
+        UI.toast('同步到云端失败，已暂存在本机');
+        throw err;
+      }
     },
 
-    getRecord(id) {
-      return data.records.find((r) => r.id === id) || null;
+    async removeRecord(id) {
+      state.records = state.records.filter((r) => r.id !== id);
+      persistCache();
+      emit();
+      try {
+        await Cloud.api.removeRecord(id);
+      } catch (err) {
+        UI.toast('云端删除失败，已在本机删除');
+      }
     },
 
-    upsertRecord(rec) {
-      const idx = data.records.findIndex((r) => r.id === rec.id);
-      const next = Object.assign({}, rec, { updatedAt: Date.now() });
-      if (idx >= 0) data.records[idx] = next;
-      else data.records.push(next);
-      commit();
-      return next;
-    },
-
-    removeRecord(id) {
-      const rec = data.records.find((r) => r.id === id);
-      if (!rec) return;
-      const ids = (rec.images || []).map((img) => img.id).filter(Boolean);
-      data.records = data.records.filter((r) => r.id !== id);
-      commit();
-      if (idbReady && ids.length) idbDelete(ids);
-      ids.forEach((i) => {
-        const u = urlCache.get(i);
-        if (u) { URL.revokeObjectURL(u); urlCache.delete(i); }
-      });
-    },
-
-    /* 处理用户选择的文件，返回可直接存入记录的 image 引用数组 */
+    /* 压缩并上传照片 */
     async addImages(files) {
       const list = Array.prototype.slice.call(files || []).filter((f) =>
-        /^image\//i.test(f.type) || /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(f.name || '')
+        /^image\//i.test(f.type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.name || '')
       );
       const refs = [];
       for (const file of list) {
         try {
           const { blob, w, h } = await compress(file);
-          const ref = {
-            id: UI.uid(),
-            name: file.name || 'photo',
-            w: w,
-            h: h,
-            size: blob.size,
-            type: blob.type || 'image/jpeg'
-          };
-          if (idbReady) {
-            await idbPut({ id: ref.id, blob: blob });
-          } else {
-            ref.data = await blobToDataURL(blob);
-          }
+          const localUrl = URL.createObjectURL(blob);
+          const ref = { id: '', localUrl: localUrl, w: w, h: h, name: file.name || 'photo', uploading: true };
           refs.push(ref);
+          previewCache.set(localUrl, localUrl);
+
+          const up = await Cloud.uploadImage(blobToFile(blob, (file.name || 'photo') + '.jpg'));
+          ref.id = up.fileId;
+          ref.uploading = false;
+          previewCache.set(String(ref.id), localUrl);
         } catch (err) {
-          console.warn(err);
           UI.toast(err.message || '有图片没能加进来');
         }
       }
-      return refs;
+      return refs.filter((r) => r.id).map((r) => ({
+        id: r.id,
+        name: r.name,
+        w: r.w,
+        h: r.h
+      }));
     },
 
     async dropImages(refs) {
-      const ids = (refs || []).map((r) => r.id).filter(Boolean);
-      if (idbReady && ids.length) await idbDelete(ids);
-      ids.forEach((i) => {
-        const u = urlCache.get(i);
-        if (u) { URL.revokeObjectURL(u); urlCache.delete(i); }
+      // 云存储文件随记录删除一并清理即可，这里只清预览缓存
+      (refs || []).forEach((r) => {
+        previewCache.delete(String(r.id));
+        if (r.localUrl) URL.revokeObjectURL(r.localUrl);
       });
     },
 
-    /* 返回可用于 <img src> 的地址 */
     async getImageURL(ref) {
       if (!ref) return '';
-      if (ref.data) return ref.data;
-      if (!idbReady) return '';
-      if (urlCache.has(ref.id)) return urlCache.get(ref.id);
+      if (!ref.id) return ref.localUrl || '';
+      if (previewCache.has(String(ref.id))) return previewCache.get(String(ref.id));
       try {
-        const row = await idbGet(ref.id);
-        if (!row || !row.blob) return '';
-        const url = URL.createObjectURL(row.blob);
-        urlCache.set(ref.id, url);
+        const map = await Cloud.getFileUrls([ref.id]);
+        const url = map[ref.id] || '';
+        if (url) previewCache.set(String(ref.id), url);
         return url;
       } catch (err) {
         return '';
@@ -319,93 +291,68 @@
 
     allImageRefs() {
       const refs = [];
-      const push = (r) => {
-        if (r && r.id) refs.push(r);
-      };
-      push(data.profile && data.profile.myAvatar);
-      push(data.profile && data.profile.partnerAvatar);
-      data.records.forEach((rec) => (rec.images || []).forEach(push));
+      const p = Store.getProfile();
+      [p.myAvatar, p.partnerAvatar].forEach((a) => a && a.id && refs.push(a));
+      state.records.forEach((r) => (r.images || []).forEach((i) => i && i.id && refs.push(i)));
       return refs;
     },
 
+    /* 备份：导出为 JSON（含图片 base64，便于自己留档） */
     async exportAll() {
-      const rows = idbReady ? await idbAll() : [];
-      const map = new Map(rows.map((r) => [r.id, r.blob]));
       const out = {
         app: 'love-diary',
-        version: 1,
+        version: 2,
         exportedAt: new Date().toISOString(),
-        profile: data.profile,
+        book: state.book,
         records: []
       };
-      for (const rec of data.records) {
+      for (const rec of state.records) {
         const images = [];
         for (const ref of rec.images || []) {
-          const copy = Object.assign({}, ref);
-          if (!copy.data && map.has(ref.id)) {
-            try { copy.data = await blobToDataURL(map.get(ref.id)); } catch (e) { /* 跳过 */ }
+          const url = await Store.getImageURL(ref);
+          let data = '';
+          if (url && url.indexOf('data:') === 0) data = url;
+          else if (url) {
+            try {
+              const res = await fetch(url);
+              const blob = await res.blob();
+              data = await new Promise((resolve) => {
+                const fr = new FileReader();
+                fr.onload = () => resolve(fr.result);
+                fr.onerror = () => resolve('');
+                fr.readAsDataURL(blob);
+              });
+            } catch (err) { /* 忽略 */ }
           }
-          images.push(copy);
+          images.push({ name: ref.name, w: ref.w, h: ref.h, data: data });
         }
         out.records.push(Object.assign({}, rec, { images: images }));
-      }
-      for (const key of ['myAvatar', 'partnerAvatar']) {
-        const av = out.profile && out.profile[key];
-        if (av && !av.data && map.has(av.id)) {
-          try { av.data = await blobToDataURL(map.get(av.id)); } catch (e) { /* 跳过 */ }
-        }
       }
       return out;
     },
 
     async importAll(json) {
       if (!json || !Array.isArray(json.records)) throw new Error('备份文件格式不正确');
-      const profile = Object.assign({}, DEFAULT_PROFILE, json.profile || {}, { onboarded: true });
-      const records = [];
       for (const rec of json.records) {
-        const images = [];
-        for (const ref of rec.images || []) {
-          const copy = Object.assign({}, ref);
-          copy.id = ref.id || UI.uid();
-          if (copy.data && idbReady) {
-            try {
-              const blob = await dataURLToBlob(copy.data);
-              await idbPut({ id: copy.id, blob: blob });
-              delete copy.data;
-            } catch (e) { /* 保留 data */ }
-          }
-          images.push(copy);
-        }
-        records.push(Object.assign({}, rec, {
-          id: rec.id || UI.uid(),
-          images: images,
-          createdAt: rec.createdAt || Date.now()
-        }));
+        const images = await Store.addImages(
+          (rec.images || []).filter((i) => i.data).map((i, idx) => blobToFile(dataURLToBlob(i.data), 'photo' + idx + '.jpg'))
+        );
+        await Store.upsertRecord(Object.assign({}, rec, { id: null, images: images }));
       }
-      data = { profile: profile, records: records };
-      commit();
     },
 
-    clearAll() {
-      data = { profile: Object.assign({}, DEFAULT_PROFILE, { onboarded: true }), records: [] };
-      commit();
+    clearLocal() {
+      state.me = null;
+      state.book = null;
+      state.records = [];
+      previewCache.clear();
+      try {
+        localStorage.removeItem(CACHE_KEY);
+        localStorage.removeItem(LS_LEGACY);
+      } catch (err) { /* 忽略 */ }
+      emit();
     }
   };
-
-  function dataURLToBlob(dataURL) {
-    return new Promise((resolve, reject) => {
-      try {
-        const parts = String(dataURL).split(',');
-        const mime = (parts[0].match(/:(.*?);/) || [])[1] || 'image/jpeg';
-        const bin = atob(parts[1] || '');
-        const arr = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-        resolve(new Blob([arr], { type: mime }));
-      } catch (err) {
-        reject(err);
-      }
-    });
-  }
 
   global.Store = Store;
 })(window);

@@ -1,11 +1,14 @@
 /* 离线缓存：安装后无网络也能打开（照片数据本就存在设备本地） */
-const CACHE = 'love-diary-v1';
+const CACHE = 'love-diary-v2';
 const ASSETS = [
   './',
   './index.html',
   './css/styles.css',
   './js/ui.js',
   './js/store.js',
+  './js/cloud.js',
+  './js/mock-cloud.js',
+  './js/auth.js',
   './js/app.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
@@ -46,16 +49,17 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 静态资源：缓存优先
+  // 静态资源：先秒开缓存，同时后台拉取新版本（下次刷新即为最新）
   event.respondWith(
-    caches.match(req).then(
-      (cached) =>
-        cached ||
-        fetch(req).then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
+    caches.open(CACHE).then(async (cache) => {
+      const cached = await cache.match(req);
+      const network = fetch(req)
+        .then((res) => {
+          if (res && res.ok) cache.put(req, res.clone());
           return res;
         })
-    )
+        .catch(() => cached);
+      return cached || network;
+    })
   );
 });

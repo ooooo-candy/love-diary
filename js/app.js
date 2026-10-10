@@ -271,6 +271,11 @@
           <div class="record__meta">
             <div class="record__date">${UI.formatDate(rec.date)} <span style="color:var(--text-dim);font-weight:500">· ${UI.relativeDay(rec.date)}</span></div>
             ${rec.place ? `<div class="record__place">📍 ${UI.escapeHtml(rec.place)}</div>` : ''}
+            ${
+              rec.authorName
+                ? `<div class="record__place">✍️ ${UI.escapeHtml(rec.authorName)}</div>`
+                : ''
+            }
           </div>
           <div class="record__actions">
             <button class="mini-btn" type="button" data-act="edit" data-id="${UI.escapeHtml(rec.id)}" title="编辑">✎</button>
@@ -435,6 +440,40 @@
     return { cells: cells, label: `${year} 年 ${month + 1} 月` };
   }
 
+  /* 情侣本卡片：账号 + 邀请码 */
+  function bookCardHtml() {
+    const p = Store.getProfile();
+    const me = Store.getMe() || {};
+    const joined = (p.members || []).length >= 2;
+
+    return `
+      <div class="section" style="margin-top:0">
+        <div class="card">
+          <div class="event-row">
+            <div class="event-row__icon">👤</div>
+            <div class="event-row__main">
+              <div class="event-row__name">${UI.escapeHtml(me.nickname || me.phone || '未登录')}</div>
+              <div class="event-row__date">${
+                Cloud.isOnline()
+                  ? '已同步到云端，换手机登录也能看到'
+                  : '本地演示模式，数据只存在这台设备'
+              }</div>
+            </div>
+            <button class="btn btn--ghost btn--sm" type="button" data-act="logout" style="flex:none">退出</button>
+          </div>
+
+          <div class="invite" data-act="copy-code">
+            <div class="invite__label">情侣本邀请码</div>
+            <div class="invite__code">${UI.escapeHtml(p.code || '------')}</div>
+            <span class="invite__hint">点击复制，发给 TA 就能一起写同一本</span>
+          </div>
+          <div class="setting-row__hint" style="margin-top:10px">
+            ${joined ? '✔ TA 已经加入了，你们正在共享同一本记录' : '还没有人加入，等 TA 用邀请码进来'}
+          </div>
+        </div>
+      </div>`;
+  }
+
   function renderStats() {
     const records = Store.listRecords();
     const shots = records.reduce((n, r) => n + (r.images || []).length, 0);
@@ -462,6 +501,8 @@
     const topTags = allTags().slice(0, 8);
 
     return `
+      ${bookCardHtml()}
+
       <div class="stats-grid">
         <div class="stat stat--brand"><b>${days}</b><span>在一起的天数</span></div>
         <div class="stat"><b>${records.length}</b><span>条记录</span></div>
@@ -539,10 +580,19 @@
             <div class="setting-row__main">
               <div class="setting-row__label">数据存储</div>
               <div class="setting-row__hint">${
-                Store.isIdbReady()
-                  ? '照片保存在浏览器 IndexedDB，容量较大'
-                  : '当前为兼容模式，照片压缩后存本地，建议定期备份'
+                Cloud.isOnline()
+                  ? '记录和照片保存在云端，登录即可在多台设备同步'
+                  : '当前未连接云服务，数据只存在这台设备'
               }</div>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-row__main">
+              <div class="setting-row__label">清空本机数据</div>
+              <div class="setting-row__hint">清除这台设备上的缓存并回到登录页</div>
+            </div>
+            <button class="btn btn--ghost btn--sm" type="button" data-act="clear">清空</button>
+          </div>
             </div>
           </div>
         </div>
@@ -563,6 +613,12 @@
     const p = Store.getProfile();
     document.documentElement.setAttribute('data-theme', p.theme || 'light');
     document.documentElement.setAttribute('data-palette', p.palette || 'pink');
+
+    // 未登录 / 还没加入本子时，显示登录或创建界面
+    if (!Store.isSignedIn() || !Store.getBook()) {
+      AuthView.show();
+      return;
+    }
 
     const views = { home: renderHome, timeline: renderTimeline, album: renderAlbum, stats: renderStats };
     Object.keys(views).forEach((key) => {
@@ -815,7 +871,7 @@
       return;
     }
     const payload = {
-      id: d.id || UI.uid(),
+      id: d.id || null,
       date: d.date,
       title: d.title,
       note: d.note.trim(),
@@ -826,21 +882,23 @@
         id: i.id,
         name: i.name,
         w: i.w,
-        h: i.h,
-        size: i.size,
-        type: i.type,
-        data: i.data
+        h: i.h
       })),
       createdAt: d.createdAt || Date.now()
     };
+    const keepBtn = UI.$$('#sheet [data-act="save"]')[0];
+    if (keepBtn) {
+      keepBtn.disabled = true;
+      keepBtn.textContent = '保存中…';
+    }
     try {
-      Store.upsertRecord(payload);
+      await Store.upsertRecord(payload);
     } catch (err) {
-      if (err && err.message === 'STORAGE_FULL') {
-        UI.toast('存储空间满了，请先导出备份');
-        return;
+      if (keepBtn) {
+        keepBtn.disabled = false;
+        keepBtn.textContent = '保存记录';
       }
-      throw err;
+      return;
     }
     const kept = new Set(payload.images.map((i) => i.id));
     const dropped = originalImages.filter((i) => !kept.has(i.id));
@@ -920,18 +978,24 @@
     avatarInput.addEventListener('change', async () => {
       const files = avatarInput.files;
       if (!files || !files.length) return;
-      const refs = await Store.addImages([files[0]]);
-      avatarInput.value = '';
-      if (!refs.length || !who) return;
-      const old = Store.getProfile()[who];
-      Store.saveProfile({ [who]: refs[0] });
-      if (old) await Store.dropImages([old]);
-      UI.closeSheet();
-      openSettings();
-      render();
+      UI.toast('头像上传中…');
+      try {
+        const refs = await Store.addImages([files[0]]);
+        avatarInput.value = '';
+        if (!refs.length || !who) return;
+        const old = Store.getProfile()[who];
+        await Store.saveProfile({ [who]: refs[0] });
+        if (old) await Store.dropImages([old]);
+        UI.closeSheet();
+        openSettings();
+        render();
+        UI.toast('头像已更新');
+      } catch (err) {
+        UI.toast(err.message || '头像上传失败');
+      }
     });
 
-    body.addEventListener('click', (e) => {
+    body.addEventListener('click', async (e) => {
       const av = e.target.closest('[data-act="avatar"]');
       if (av) {
         who = av.dataset.who;
@@ -941,32 +1005,38 @@
       const rm = e.target.closest('[data-act="rm-avatar"]');
       if (rm) {
         const key = rm.dataset.who;
-        const old = Store.getProfile()[key];
-        Store.saveProfile({ [key]: null });
-        if (old) Store.dropImages([old]);
-        UI.closeSheet();
-        openSettings();
-        render();
+        Store.saveProfile({ [key]: null }).then(() => {
+          UI.closeSheet();
+          openSettings();
+          render();
+        });
         return;
       }
       const pal = e.target.closest('[data-pal]');
       if (pal) {
-        Store.saveProfile({ palette: pal.dataset.pal });
+        Store.saveProfile({ palette: pal.dataset.pal }).catch(() => {});
         UI.$$('.palette').forEach((b) => b.classList.toggle('is-on', b === pal));
         render();
         return;
       }
       const save = e.target.closest('[data-act="save-profile"]');
       if (save) {
-        Store.saveProfile({
-          myName: body.querySelector('#sMyName').value.trim() || '我',
-          partnerName: body.querySelector('#sPartnerName').value.trim() || '宝贝',
-          anniversary: body.querySelector('#sAnniv').value || UI.todayStr(),
-          onboarded: true
-        });
-        UI.closeSheet();
-        render();
-        UI.toast('资料已更新');
+        save.disabled = true;
+        save.textContent = '保存中…';
+        try {
+          await Store.saveProfile({
+            myName: body.querySelector('#sMyName').value.trim() || '我',
+            partnerName: body.querySelector('#sPartnerName').value.trim() || '宝贝',
+            anniversary: body.querySelector('#sAnniv').value || UI.todayStr()
+          });
+          UI.closeSheet();
+          render();
+          UI.toast('资料已更新');
+        } catch (err) {
+          save.disabled = false;
+          save.textContent = '保存';
+          UI.toast(err.message || '保存失败');
+        }
       }
     });
   }
@@ -1059,9 +1129,11 @@
       if (del) {
         const id = del.dataset.id;
         const next = (Store.getProfile().events || []).filter((x) => x.id !== id);
-        Store.saveProfile({ events: next });
-        UI.closeSheet();
-        openEvents();
+        Store.saveProfile({ events: next }).then(() => {
+          UI.closeSheet();
+          openEvents();
+          render();
+        });
         render();
         return;
       }
@@ -1078,9 +1150,11 @@
           return;
         }
         const nextEvent = { id: UI.uid(), name: name, date: date, icon: icon, yearly: yearly };
-        Store.saveProfile({ events: (Store.getProfile().events || []).concat([nextEvent]) });
-        UI.closeSheet();
-        openEvents();
+        Store.saveProfile({ events: (Store.getProfile().events || []).concat([nextEvent]) }).then(() => {
+          UI.closeSheet();
+          openEvents();
+          render();
+        });
         render();
         UI.toast('已添加');
       }
@@ -1168,12 +1242,33 @@
     input.click();
   }
 
+  async function copyInviteCode() {
+    const code = Store.getProfile().code;
+    if (!code) return UI.toast('还没有邀请码');
+    try {
+      await navigator.clipboard.writeText(code);
+      UI.toast('邀请码已复制：' + code);
+    } catch (err) {
+      UI.openSheet(`
+        <div class="sheet__title">
+          <span>邀请码</span>
+          <button class="mini-btn" type="button" data-act="close-sheet">✕</button>
+        </div>
+        <div class="card" style="text-align:center;padding:22px 16px">
+          <div style="font-size:30px;font-weight:800;letter-spacing:6px">${UI.escapeHtml(code)}</div>
+          <div class="drop-hint" style="margin-top:12px">长按上面的邀请码复制，发给 TA</div>
+        </div>
+        <p class="record__note">TA 打开 App → 用手机号登录 → 点「用邀请码加入」→ 输入这 6 位，就能一起写同一本啦。</p>
+      `);
+    }
+  }
+
   async function clearAll() {
-    const ok = await UI.confirm('这会删除全部记录和照片，且无法恢复。确定吗？');
+    const ok = await UI.confirm('清空本机缓存并回到登录页？（云端记录不会被删除）');
     if (!ok) return;
-    Store.clearAll();
-    render();
-    UI.toast('已清空');
+    Store.clearLocal();
+    AuthView.show();
+    UI.toast('已清空本机数据');
   }
 
   /* ---------------- 安装到手机桌面 ---------------- */
@@ -1238,50 +1333,34 @@
     }
   }
 
-  /* ---------------- 引导页 ---------------- */
+  /* ---------------- 应用入口 ---------------- */
 
-  function openOnboarding() {
-    state.onboarding = true;
-    const p = Store.getProfile();
-    const html = `
-      <div class="onboard">
-        <div class="onboard__hero">
-          <div class="big">💞</div>
-          <h1>欢迎来到「我们的小日子」</h1>
-          <p>一个只属于你们两个人的恋爱记录本<br/>先告诉我一些基本信息吧</p>
-        </div>
-
-        <div class="field">
-          <label class="field__label" for="oMy">我的昵称</label>
-          <input class="input" id="oMy" placeholder="我" value="${UI.escapeHtml(p.myName === '我' ? '' : p.myName || '')}" />
-        </div>
-        <div class="field">
-          <label class="field__label" for="oPartner">TA 的昵称</label>
-          <input class="input" id="oPartner" placeholder="宝贝" value="${UI.escapeHtml(p.partnerName === '宝贝' ? '' : p.partnerName || '')}" />
-        </div>
-        <div class="field">
-          <label class="field__label" for="oAnniv">我们在一起的日子</label>
-          <input class="input" id="oAnniv" type="date" value="${UI.escapeHtml(p.anniversary || UI.todayStr())}" />
-        </div>
-        <button class="btn btn--primary btn--block" style="margin-top:8px" type="button" data-act="finish-onboard">开始记录我们的故事</button>
-        <div class="drop-hint" style="margin-top:14px">所有数据只保存在你自己的设备里，不会上传</div>
-      </div>
-    `;
-    const body = UI.openSheet(html);
-    body.addEventListener('click', (e) => {
-      if (!e.target.closest('[data-act="finish-onboard"]')) return;
-      Store.saveProfile({
-        myName: body.querySelector('#oMy').value.trim() || '我',
-        partnerName: body.querySelector('#oPartner').value.trim() || '宝贝',
-        anniversary: body.querySelector('#oAnniv').value || UI.todayStr(),
-        onboarded: true
-      });
-      state.onboarding = false;
-      UI.closeSheet();
-      render();
-      UI.toast('准备好了，去写第一条记录吧 ❤');
-    });
+  function enterApp() {
+    document.documentElement.classList.remove('is-guest');
+    document.getElementById('view-auth').hidden = true;
+    state.tab = 'home';
+    render();
   }
+
+  function reset() {
+    document.documentElement.classList.add('is-guest');
+  }
+
+  async function refresh() {
+    try {
+      await Store.sync();
+      render();
+      UI.toast('已同步最新 ❤');
+    } catch (err) {
+      UI.toast(err.message || '同步失败');
+    }
+  }
+
+  window.App = {
+    enterApp: enterApp,
+    reset: reset,
+    refresh: refresh
+  };
 
   /* ---------------- 事件绑定 ---------------- */
 
@@ -1294,7 +1373,7 @@
 
     document.getElementById('btnTheme').addEventListener('click', () => {
       const p = Store.getProfile();
-      Store.saveProfile({ theme: (p.theme || 'light') === 'dark' ? 'light' : 'dark' });
+      Store.saveProfile({ theme: (p.theme || 'light') === 'dark' ? 'light' : 'dark' }).catch(() => {});
       render();
     });
 
@@ -1367,6 +1446,9 @@
     if (act === 'install') return tryInstall();
     if (act === 'import') return importBackup();
     if (act === 'clear') return clearAll();
+    if (act === 'logout') return AuthView.signOut();
+    if (act === 'copy-code') return copyInviteCode();
+    if (act === 'sync') return refresh();
     if (act === 'mood') {
       state.mood = el.dataset.val;
       return render();
@@ -1427,12 +1509,21 @@
   /* ---------------- 启动 ---------------- */
 
   document.addEventListener('DOMContentLoaded', async () => {
-    await Store.init();
-    Store.subscribe(() => { /* 数据变更由各处显式 render 处理 */ });
     bindGlobal();
     bindInstallEvents();
     registerSW();
-    render();
-    if (!Store.getProfile().onboarded) openOnboarding();
+
+    document.documentElement.classList.add('is-guest');
+    try {
+      await Store.init();
+    } catch (err) {
+      UI.toast('连接云端失败，已进入离线只读模式');
+    }
+
+    if (Store.isSignedIn() && Store.getBook()) {
+      enterApp();
+    } else {
+      AuthView.show();
+    }
   });
 })();

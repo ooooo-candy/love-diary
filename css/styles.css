@@ -686,8 +686,7 @@ img { display: block; max-width: 100%; }
 }
 
 /* ---------- 引导页 ---------- */
-.onboard { padding: 30px 4px 10px; }
-.onboard__hero { text-align: center; margin-bottom: 26px; }
+.onboard { padding: 30px 4px 10px; }.onboard__hero { text-align: center; margin-bottom: 26px; }
 .onboard__hero .big { font-size: 54px; animation: beat 1.8s ease-in-out infinite; }
 .onboard__hero h1 { font-size: 21px; margin: 14px 0 6px; }
 .onboard__hero p { font-size: 13.5px; color: var(--text-dim); margin: 0; line-height: 1.6; }
@@ -695,6 +694,38 @@ img { display: block; max-width: 100%; }
 .upload-avatar {
   display: flex; align-items: center; gap: 12px;
 }
+
+/* ---------- 登录 / 情侣本引导 ---------- */
+html.is-guest .topbar { display: none; }
+html.is-guest .tabbar { display: none; }
+html.is-guest .main { padding-top: 8px; }
+
+.auth { padding: 26px 4px 24px; }
+.auth__hero { text-align: center; margin-bottom: 26px; }
+.auth__logo { font-size: 56px; line-height: 1; animation: beat 2s ease-in-out infinite; }
+.auth__hero h1 { font-size: 22px; margin: 14px 0 8px; letter-spacing: .5px; }
+.auth__hero p { font-size: 13px; color: var(--text-dim); line-height: 1.7; margin: 0; }
+.auth__card { padding: 18px; }
+.auth__tip {
+  margin-top: 14px; font-size: 11.5px; line-height: 1.7;
+  color: var(--text-dim); background: var(--brand-soft);
+  padding: 9px 12px; border-radius: 10px;
+}
+.auth__tip b { color: var(--brand); }
+
+/* ---------- 邀请码 ---------- */
+.invite {
+  position: relative; overflow: hidden;
+  margin-top: 12px; padding: 14px 16px;
+  border-radius: var(--r-sm);
+  text-align: center; color: #fff;
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  transition: transform .18s ease;
+}
+.invite:active { transform: scale(.98); }
+.invite__label { font-size: 12px; opacity: .9; }
+.invite__code { font-size: 30px; font-weight: 800; letter-spacing: 8px; margin: 4px 0 2px; }
+.invite__hint { font-size: 11px; opacity: .85; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
