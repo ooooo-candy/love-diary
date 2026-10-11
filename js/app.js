@@ -452,7 +452,7 @@
           <div class="event-row">
             <div class="event-row__icon">👤</div>
             <div class="event-row__main">
-              <div class="event-row__name">${UI.escapeHtml(me.nickname || me.phone || '未登录')}</div>
+              <div class="event-row__name">${UI.escapeHtml(me.nickname || me.username || '未登录')}</div>
               <div class="event-row__date">${
                 Cloud.isOnline()
                   ? '已同步到云端，换手机登录也能看到'
@@ -588,10 +588,10 @@
           </div>
           <div class="setting-row">
             <div class="setting-row__main">
-              <div class="setting-row__label">修改密码</div>
-              <div class="setting-row__hint">定期换一个更安全</div>
+              <div class="setting-row__label">账号安全</div>
+              <div class="setting-row__hint">修改密码、密保问题、恢复码</div>
             </div>
-            <button class="btn btn--ghost btn--sm" type="button" data-act="change-pwd">修改</button>
+            <button class="btn btn--ghost btn--sm" type="button" data-act="security">管理</button>
           </div>
           <div class="setting-row">
             <div class="setting-row__main">
@@ -1249,51 +1249,162 @@
     input.click();
   }
 
-  /* 修改密码 */
-  function openChangePassword() {
+  /* 账号安全：密码 / 密保问题 / 恢复码 */
+  function openSecurity() {
+    const me = Store.getMe() || {};
+    const q = me.question || '（未设置）';
+    const questions = [
+      '我们在一起的日子是？',
+      'TA 的生日是哪一天？',
+      '我们第一次看的电影是？',
+      '第一次约会去的地方是？',
+      '我们第一次一起吃的是什么？'
+    ];
+
     const html = `
       <div class="sheet__title">
-        <span>修改密码</span>
+        <span>账号安全</span>
         <button class="mini-btn" type="button" data-act="close-sheet">✕</button>
       </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="event-row">
+          <div class="event-row__icon">👤</div>
+          <div class="event-row__main">
+            <div class="event-row__name">${UI.escapeHtml(me.username || '')}</div>
+            <div class="event-row__date">当前密保问题：${UI.escapeHtml(q)}</div>
+          </div>
+        </div>
+      </div>
+
       <div class="field">
-        <label class="field__label" for="cpOld">原密码</label>
-        <input class="input" id="cpOld" type="password" maxlength="32" placeholder="当前使用的密码" />
+        <span class="field__label">① 修改密码</span>
+        <input class="input" id="cpOld" type="password" maxlength="32" placeholder="原密码" style="margin-bottom:8px" />
+        <input class="input" id="cpNew" type="password" maxlength="32" placeholder="新密码（至少 6 位）" style="margin-bottom:8px" />
+        <input class="input" id="cpNew2" type="password" maxlength="32" placeholder="再输入一次新密码" />
       </div>
-      <div class="field">
-        <label class="field__label" for="cpNew">新密码</label>
-        <input class="input" id="cpNew" type="password" maxlength="32" placeholder="至少 6 位" />
+      <button class="btn btn--ghost btn--block btn--sm" type="button" data-act="save-pwd">保存新密码</button>
+
+      <div class="field" style="margin-top:22px">
+        <span class="field__label">② 修改密保问题</span>
+        <div class="chips" id="secQuestions" style="margin:0 0 8px;padding:0">
+          ${questions
+            .map(
+              (x) =>
+                `<button class="chip" type="button" data-secq="${UI.escapeHtml(x)}">${UI.escapeHtml(x)}</button>`
+            )
+            .join('')}
+        </div>
+        <input class="input" id="secQuestion" maxlength="60" placeholder="或自己写一个问题" style="margin-bottom:8px" />
+        <input class="input" id="secAnswer" maxlength="40" placeholder="新的密保答案" style="margin-bottom:8px" />
+        <input class="input" id="secPassword" type="password" maxlength="32" placeholder="输入登录密码以确认" />
       </div>
-      <div class="field">
-        <label class="field__label" for="cpNew2">确认新密码</label>
-        <input class="input" id="cpNew2" type="password" maxlength="32" placeholder="再输入一次" />
+      <button class="btn btn--ghost btn--block btn--sm" type="button" data-act="save-security">保存密保问题</button>
+
+      <div class="field" style="margin-top:22px">
+        <span class="field__label">③ 重新生成恢复码</span>
+        <input class="input" id="recPassword" type="password" maxlength="32" placeholder="输入登录密码" />
       </div>
-      <div class="row" style="margin-top:18px">
-        <button class="btn btn--ghost" type="button" data-act="close-sheet">取消</button>
-        <button class="btn btn--primary" type="button" data-act="save-pwd">确认修改</button>
+      <button class="btn btn--ghost btn--block btn--sm" type="button" data-act="regen-recovery">生成新的恢复码</button>
+
+      <div class="drop-hint" style="margin-top:16px">
+        忘记密码时：在登录页点「忘记密码」，答对密保问题即可重设；<br/>答不上来时用恢复码。
       </div>
-      <div class="drop-hint" style="margin-top:12px">忘记原密码？退出登录后用「忘记密码」重设即可</div>
     `;
+
     const body = UI.openSheet(html);
+    let picked = '';
 
     body.addEventListener('click', async (e) => {
-      const btn = e.target.closest('[data-act="save-pwd"]');
+      const qChip = e.target.closest('[data-secq]');
+      if (qChip) {
+        picked = qChip.dataset.secq;
+        UI.$$('#secQuestions .chip').forEach((b) => b.classList.toggle('is-on', b === qChip));
+        body.querySelector('#secQuestion').value = '';
+        return;
+      }
+
+      const btn = e.target.closest('[data-act]');
       if (!btn) return;
-      const oldPwd = body.querySelector('#cpOld').value;
-      const pwd = body.querySelector('#cpNew').value;
-      const pwd2 = body.querySelector('#cpNew2').value;
-      if (String(pwd).length < 6) return UI.toast('新密码至少 6 位');
-      if (pwd !== pwd2) return UI.toast('两次输入的新密码不一样');
-      btn.disabled = true;
-      btn.textContent = '提交中…';
-      try {
-        await Cloud.api.changePassword(oldPwd, pwd);
-        UI.closeSheet();
-        UI.toast('密码已修改 ❤');
-      } catch (err) {
-        btn.disabled = false;
-        btn.textContent = '确认修改';
-        UI.toast(err.message || '修改失败');
+      const act = btn.dataset.act;
+
+      if (act === 'save-pwd') {
+        const oldPwd = body.querySelector('#cpOld').value;
+        const pwd = body.querySelector('#cpNew').value;
+        const pwd2 = body.querySelector('#cpNew2').value;
+        if (String(pwd).length < 6) return UI.toast('新密码至少 6 位');
+        if (pwd !== pwd2) return UI.toast('两次输入的新密码不一样');
+        btn.disabled = true;
+        btn.textContent = '提交中…';
+        try {
+          await Cloud.api.changePassword(oldPwd, pwd);
+          UI.closeSheet();
+          UI.toast('密码已修改 ❤');
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = '保存新密码';
+          UI.toast(err.message || '修改失败');
+        }
+        return;
+      }
+
+      if (act === 'save-security') {
+        const question = body.querySelector('#secQuestion').value.trim() || picked;
+        const answer = body.querySelector('#secAnswer').value.trim();
+        const password = body.querySelector('#secPassword').value;
+        if (!question) return UI.toast('请选择或填写密保问题');
+        if (answer.length < 2) return UI.toast('密保答案至少 2 个字符');
+        if (!password) return UI.toast('请输入登录密码');
+        btn.disabled = true;
+        btn.textContent = '提交中…';
+        try {
+          await Cloud.api.updateSecurity(password, question, answer);
+          UI.closeSheet();
+          openSecurity();
+          UI.toast('密保问题已更新 ❤');
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = '保存密保问题';
+          UI.toast(err.message || '修改失败');
+        }
+        return;
+      }
+
+      if (act === 'regen-recovery') {
+        const password = body.querySelector('#recPassword').value;
+        if (!password) return UI.toast('请输入登录密码');
+        btn.disabled = true;
+        btn.textContent = '生成中…';
+        try {
+          const res = await Cloud.api.regenerateRecovery(password);
+          UI.closeSheet();
+          UI.openSheet(`
+            <div class="sheet__title">
+              <span>新的恢复码</span>
+              <button class="mini-btn" type="button" data-act="close-sheet">✕</button>
+            </div>
+            <div class="invite" data-act="copy-code2">
+              <div class="invite__label">恢复码（旧的已失效）</div>
+              <div class="invite__code" style="font-size:22px;letter-spacing:3px">${UI.escapeHtml(res.recoveryCode)}</div>
+              <div class="invite__hint">点击复制</div>
+            </div>
+            <div class="drop-hint" style="margin-top:14px">建议截图保存，忘记密码又答不上密保问题时要用它。</div>
+          `);
+          const sheet = document.getElementById('sheetBody');
+          sheet.addEventListener('click', (ev) => {
+            if (!ev.target.closest('[data-act="copy-code2"]')) return;
+            if (navigator.clipboard) {
+              navigator.clipboard.writeText(res.recoveryCode).then(
+                () => UI.toast('已复制'),
+                () => UI.toast('请长按恢复码复制')
+              );
+            }
+          });
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = '生成新的恢复码';
+          UI.toast(err.message || '生成失败');
+        }
       }
     });
   }
@@ -1503,7 +1614,7 @@
     if (act === 'import') return importBackup();
     if (act === 'clear') return clearAll();
     if (act === 'logout') return AuthView.signOut();
-    if (act === 'change-pwd') return openChangePassword();
+    if (act === 'security') return openSecurity();
     if (act === 'copy-code') return copyInviteCode();
     if (act === 'sync') return refresh();
     if (act === 'mood') {

@@ -127,22 +127,37 @@
     },
 
     api: {
-      sendCode: (phone) => Cloud.call('sendCode', { phone: phone }),
-
-      register: (phone, code, password) =>
-        Cloud.call('register', { phone: phone, code: code, password: password }).then((d) => {
+      register: (username, password, question, answer) =>
+        Cloud.call('register', {
+          username: username,
+          password: password,
+          question: question,
+          answer: answer
+        }).then((d) => {
           Cloud.setSession({ uid: d.uid, token: d.token });
           return d;
         }),
 
-      login: (phone, password) =>
-        Cloud.call('login', { phone: phone, password: password }).then((d) => {
+      login: (username, password) =>
+        Cloud.call('login', { username: username, password: password }).then((d) => {
           Cloud.setSession({ uid: d.uid, token: d.token });
           return d;
         }),
 
-      resetPassword: (phone, code, password) =>
-        Cloud.call('resetPassword', { phone: phone, code: code, password: password }).then((d) => {
+      securityQuestion: (username) => Cloud.call('securityQuestion', { username: username }),
+
+      resetByAnswer: (username, answer, password) =>
+        Cloud.call('resetByAnswer', { username: username, answer: answer, password: password }).then((d) => {
+          Cloud.setSession({ uid: d.uid, token: d.token });
+          return d;
+        }),
+
+      resetByCode: (username, recoveryCode, password) =>
+        Cloud.call('resetByCode', {
+          username: username,
+          recoveryCode: recoveryCode,
+          password: password
+        }).then((d) => {
           Cloud.setSession({ uid: d.uid, token: d.token });
           return d;
         }),
@@ -150,11 +165,10 @@
       changePassword: (oldPassword, password) =>
         Cloud.call('changePassword', { oldPassword: oldPassword, password: password }),
 
-      signIn: (phone, code) =>
-        Cloud.call('signIn', { phone: phone, code: code }).then((d) => {
-          Cloud.setSession({ uid: d.uid, token: d.token });
-          return d;
-        }),
+      updateSecurity: (password, question, answer) =>
+        Cloud.call('updateSecurity', { password: password, question: question, answer: answer }),
+
+      regenerateRecovery: (password) => Cloud.call('regenerateRecovery', { password: password }),
       signOut: () => Cloud.call('signOut', {}).finally(() => Cloud.clearSession()),
       me: () => Cloud.call('me', {}),
       updateUser: (patch) => Cloud.call('updateUser', patch),

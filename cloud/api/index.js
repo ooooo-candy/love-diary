@@ -1,29 +1,33 @@
 /* 我们的小日子 · 云端接口（CloudBase 云函数）
  *
- * 存储方案：整份数据作为一个 JSON 文件存放在云存储（love-diary/db.json），
- * 好处是「开通环境即可用」，不需要额外开通云数据库、也不需要手动建集合。
- * 数据量小（两人使用），读写一份 JSON 完全够用；照片单独存云存储。
+ * 账号体系（不依赖短信/邮箱，开箱即用）：
+ *   注册：用户名 + 密码 + 密保问题（找回密码用）→ 返回一次性恢复码
+ *   登录：用户名 + 密码
+ *   找回：① 答对密保问题重设密码  ② 用恢复码重设密码
+ * 安全：密码与密保答案都用 scrypt 加盐哈希；密保答案连错 5 次锁定 10 分钟。
  *
- * HTTP 访问服务（无需前端登录态即可调用），业务身份用我们自己签发的 token 校验。
+ * 存储：整份数据存成云存储里的一个 JSON（love-diary/db.json），免开数据库、免建集合。
  */
 const cloudbase = require('@cloudbase/node-sdk');
-const fs = require('fs');
 const crypto = require('crypto');
 
 const app = cloudbase.init({ env: cloudbase.SYMBOL_CURRENT_ENV || process.env.TCB_ENV });
 
-const DB_PATH = 'love-diary/db.json';
+const DB_PATH = 'love-diary/data.json'; // 换新文件，与早期的测试数据彻底隔离
 const TOKEN_DAYS = 30;
-const CODE_MINUTES = 10;
 const MAX_IMAGES = 9;
+const MAX_ANSWER_FAILS = 5;
+const LOCK_MINUTES = 10;
 
-const EMPTY = { users: [], books: [], records: [], codes: [] };
+const EMPTY = { users: [], books: [], records: [] };
 
-/* ---------------- 存储：读写云存储里的 JSON ---------------- */
+const COLLECTION_KEYS = ['users', 'books', 'records'];
+
+/* ---------------- 存储 ---------------- */
 
 let fileIdPrefix = null;
+let lastLoadError = null;
 
-/* 云存储的 fileID 形如 cloud://<env>.<bucket>/<path>，前缀（含 bucket）需要先探一次 */
 async function fileIDOf(cloudPath) {
   if (!fileIdPrefix) {
     const up = await app.uploadFile({
@@ -32,15 +36,12 @@ async function fileIDOf(cloudPath) {
     });
     const id = up && up.fileID;
     if (!id || id.indexOf('//') < 0) throw new Error('无法获取云存储信息');
-    // fileID: cloud://<env>.<bucket>/<path> —— 需要协议之后的第一个斜杠
     const slash = id.indexOf('/', id.indexOf('//') + 2);
     if (slash < 0) throw new Error('无法解析云存储路径');
     fileIdPrefix = id.slice(0, slash);
   }
   return fileIdPrefix + '/' + cloudPath;
 }
-
-let lastLoadError = null;
 
 async function loadDB() {
   try {
@@ -51,7 +52,7 @@ async function loadDB() {
       lastLoadError = 'no temp url';
       return JSON.parse(JSON.stringify(EMPTY));
     }
-    // 追加时间戳，避免命中 CDN 上的旧版本
+    // 加时间戳，避免读到 CDN 缓存的旧版本
     const sep = url.indexOf('?') >= 0 ? '&' : '?';
     const resp = await fetch(url + sep + 't=' + Date.now(), {
       headers: { 'Cache-Control': 'no-cache' }
@@ -63,7 +64,11 @@ async function loadDB() {
     }
     const data = JSON.parse(text);
     lastLoadError = null;
-    return Object.assign(JSON.parse(JSON.stringify(EMPTY)), data);
+    const merged = JSON.parse(JSON.stringify(EMPTY));
+    COLLECTION_KEYS.forEach((k) => {
+      if (Array.isArray(data[k])) merged[k] = data[k];
+    });
+    return merged;
   } catch (err) {
     lastLoadError = String((err && err.message) || err).slice(0, 200);
     return JSON.parse(JSON.stringify(EMPTY));
@@ -79,12 +84,11 @@ async function saveDB(data) {
       headers: { 'Cache-Control': 'no-cache', 'Content-Type': 'application/json' }
     });
   } catch (err) {
-    // 部分版本不支持 headers，降级为普通上传
     await app.uploadFile({ cloudPath: DB_PATH, fileContent: buffer });
   }
 }
 
-/* ---------------- 工具 ---------------- */
+/* ---------------- 通用工具 ---------------- */
 
 function rand(len, chars) {
   chars = chars || 'abcdefghijkmnpqrstuvwxyz23456789';
@@ -93,55 +97,90 @@ function rand(len, chars) {
   return s;
 }
 
-function numCode() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
-
-/* ---------------- 密码 ---------------- */
-
-function assertPassword(password) {
-  const p = String(password || '');
-  if (p.length < 6) fail('密码至少 6 位', 'WEAK_PASSWORD');
-  if (p.length > 32) fail('密码最长 32 位', 'LONG_PASSWORD');
-  return p;
-}
-
-/* 加盐哈希，明文不落库 */
-function makePassword(password) {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.scryptSync(String(password), salt, 32).toString('hex');
-  return { passwordSalt: salt, passwordHash: hash };
-}
-
-function checkPassword(user, password) {
-  if (!user || !user.passwordHash || !user.passwordSalt) return false;
-  try {
-    const hash = crypto.scryptSync(String(password || ''), user.passwordSalt, 32);
-    const saved = Buffer.from(user.passwordHash, 'hex');
-    return hash.length === saved.length && crypto.timingSafeEqual(hash, saved);
-  } catch (err) {
-    return false;
-  }
-}
-
-/* 校验并消费一条验证码 */
-function consumeCode(db, phone, code) {
-  const now = Date.now();
-  const rows = db.codes.filter((c) => c.phone === phone && c.code === code && !c.used);
-  const row = rows[rows.length - 1];
-  if (!row) fail('验证码不正确', 'CODE_WRONG');
-  if (row.expiresAt < now) fail('验证码已过期', 'CODE_EXPIRED');
-  row.used = true;
-}
-
 function fail(message, code) {
   const err = new Error(message);
   err.apiCode = code || 'ERROR';
   throw err;
 }
 
+/* 通用哈希（密码、密保答案、恢复码都用它，一律加盐） */
+function hashValue(value) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(String(value), salt, 32).toString('hex');
+  return { salt: salt, hash: hash };
+}
+
+function verifyValue(value, salt, expected) {
+  if (!salt || !expected) return false;
+  try {
+    const hash = crypto.scryptSync(String(value), salt, 32);
+    const saved = Buffer.from(expected, 'hex');
+    return hash.length === saved.length && crypto.timingSafeEqual(hash, saved);
+  } catch (err) {
+    return false;
+  }
+}
+
+/* ---------------- 字段校验 ---------------- */
+
+function normUsername(u) {
+  return String(u || '').trim().toLowerCase();
+}
+
+function checkUsername(u) {
+  const name = normUsername(u);
+  if (!/^[a-z0-9_]{3,20}$/.test(name)) {
+    fail('用户名需 3~20 位字母、数字或下划线', 'BAD_USERNAME');
+  }
+  return name;
+}
+
+function checkPassword(p) {
+  const v = String(p || '');
+  if (v.length < 6) fail('密码至少 6 位', 'WEAK_PASSWORD');
+  if (v.length > 32) fail('密码最长 32 位', 'LONG_PASSWORD');
+  return v;
+}
+
+/* 答案做归一化：忽略大小写、空格与常见标点，减少“差一个符号就答不对” */
+function normAnswer(a) {
+  return String(a || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s\-_·.,，。、!！?？'"'']/g, '');
+}
+
+function checkAnswer(a) {
+  const v = normAnswer(a);
+  if (v.length < 2) fail('密保答案至少 2 个字符', 'BAD_ANSWER');
+  if (v.length > 40) fail('密保答案太长了', 'LONG_ANSWER');
+  return v;
+}
+
+function checkQuestion(q) {
+  const v = String(q || '').trim();
+  if (v.length < 2) fail('请选择或填写密保问题', 'BAD_QUESTION');
+  return v.slice(0, 60);
+}
+
+/* 恢复码：4 组 4 位（去掉容易看错的字符） */
+function makeRecoveryCode() {
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const part = () => rand(4, chars);
+  return (part() + '-' + part() + '-' + part() + '-' + part()).toUpperCase();
+}
+
+/* ---------------- 数据包装 ---------------- */
+
 function publicUser(u) {
-  return { uid: u._id, phone: u.phone, nickname: u.nickname || '', avatar: u.avatar || null, bookId: u.bookId || null };
+  return {
+    uid: u._id,
+    username: u.username,
+    nickname: u.nickname || '',
+    avatar: u.avatar || null,
+    bookId: u.bookId || null,
+    question: u.question || ''
+  };
 }
 
 function publicBook(b) {
@@ -180,11 +219,12 @@ function publicRecord(r) {
   };
 }
 
-function maskPhone(p) {
-  return String(p).replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2');
+function findUserByName(db, username) {
+  const name = normUsername(username);
+  return db.users.filter((x) => x.username === name)[0] || null;
 }
 
-function findUser(db, uid, token) {
+function userByToken(db, uid, token) {
   if (!uid || !token) fail('请先登录', 'NO_AUTH');
   const u = db.users.filter((x) => x._id === uid)[0];
   if (!u) fail('账号不存在，请重新登录', 'NO_USER');
@@ -205,36 +245,15 @@ function issueToken() {
   return { t: rand(40), exp: Date.now() + TOKEN_DAYS * 86400000 };
 }
 
-/* ---------------- 短信 ---------------- */
-
-async function sendRealSms(phone, code) {
-  const { SMS_SECRET_ID, SMS_SECRET_KEY, SMS_SDK_APP_ID, SMS_TEMPLATE_ID, SMS_SIGN } = process.env;
-  if (!SMS_SECRET_ID || !SMS_SECRET_KEY) return false;
-  try {
-    const tencentcloud = require('tencentcloud-sdk-nodejs-sms');
-    const client = new tencentcloud.sms.v20210111.Client({
-      credential: { secretId: SMS_SECRET_ID, secretKey: SMS_SECRET_KEY },
-      region: 'ap-guangzhou',
-      profile: { httpProfile: { endpoint: 'sms.tencentcloudapi.com' } }
-    });
-    await client.SendSms({
-      SmsSdkAppId: SMS_SDK_APP_ID,
-      SignName: SMS_SIGN,
-      TemplateId: SMS_TEMPLATE_ID,
-      TemplateParamSet: [code, String(CODE_MINUTES)],
-      PhoneNumberSet: ['+86' + phone]
-    });
-    return true;
-  } catch (err) {
-    console.error('sms failed', err);
-    throw new Error('短信发送失败：' + (err.message || ''));
-  }
+function attachToken(u, token) {
+  const now = Date.now();
+  u.tokens = (u.tokens || []).filter((x) => x.exp > now).slice(-4);
+  u.tokens.push(token);
 }
 
-/* ---------------- 接口实现 ---------------- */
+/* ---------------- 接口 ---------------- */
 
 const handlers = {
-  /* 服务自检 */
   async ping() {
     const db = await loadDB();
     return {
@@ -242,145 +261,200 @@ const handlers = {
       users: db.users.length,
       books: db.books.length,
       records: db.records.length,
-      smsReady: Boolean(process.env.SMS_SECRET_ID && process.env.SMS_SECRET_KEY)
+      loadError: lastLoadError
     };
   },
 
-  /* 发送验证码 */
-  async sendCode(payload) {
-    const db = await loadDB();
-    const phone = String(payload.phone || '').replace(/\D/g, '');
-    if (!/^1\d{10}$/.test(phone)) fail('请输入正确的手机号', 'BAD_PHONE');
-
-    const now = Date.now();
-    const recent = db.codes.filter((c) => c.phone === phone).pop();
-    if (recent && now - (recent.createdAt || 0) < 60000) fail('验证码已发送，请稍后再试', 'TOO_FAST');
-
-    const code = numCode();
-    db.codes.push({ _id: 'c_' + rand(8), phone: phone, code: code, used: false, expiresAt: now + CODE_MINUTES * 60000, createdAt: now });
-    if (db.codes.length > 200) db.codes = db.codes.slice(-200);
-    await saveDB(db);
-
-    const sent = await sendRealSms(phone, code);
-    return { sent: sent, expiresInMinutes: CODE_MINUTES, devCode: sent ? undefined : code };
-  },
-
-  /* 验证码登录 / 注册 */
-  async signIn(payload) {
-    const db = await loadDB();
-    const phone = String(payload.phone || '').replace(/\D/g, '');
-    const code = String(payload.code || '').trim();
-    if (!/^1\d{10}$/.test(phone)) fail('请输入正确的手机号', 'BAD_PHONE');
-    if (!/^\d{6}$/.test(code)) fail('请输入 6 位验证码', 'BAD_CODE');
-
-    const now = Date.now();
-    const rows = db.codes.filter((c) => c.phone === phone && c.code === code && !c.used);
-    const row = rows[rows.length - 1];
-    if (!row) fail('验证码不正确', 'CODE_WRONG');
-    if (row.expiresAt < now) fail('验证码已过期', 'CODE_EXPIRED');
-    row.used = true;
-
-    let u = db.users.filter((x) => x.phone === phone)[0];
-    const token = issueToken();
-    if (!u) {
-      u = { _id: 'u_' + now.toString(36) + rand(8), phone: phone, nickname: '', avatar: null, bookId: null, tokens: [token], createdAt: now };
-      db.users.push(u);
-    } else {
-      u.tokens = (u.tokens || []).filter((x) => x.exp > now).slice(-4);
-      u.tokens.push(token);
-    }
-    await saveDB(db);
-    return { uid: u._id, token: token.t, expiresAt: token.exp, user: publicUser(u) };
-  },
-
-  /* 注册：手机号 + 验证码 + 密码（手机号即登录账号） */
+  /* 注册：用户名 + 密码 + 密保问题 */
   async register(payload) {
     const db = await loadDB();
-    const phone = String(payload.phone || '').replace(/\D/g, '');
-    const code = String(payload.code || '').trim();
-    const password = assertPassword(payload.password);
-    if (!/^1\d{10}$/.test(phone)) fail('请输入正确的手机号', 'BAD_PHONE');
+    const username = checkUsername(payload.username);
+    const password = checkPassword(payload.password);
+    const question = checkQuestion(payload.question);
+    const answer = checkAnswer(payload.answer);
 
-    const existed = db.users.filter((x) => x.phone === phone)[0];
-    if (existed && existed.passwordHash) fail('该手机号已经注册过了，直接登录吧', 'PHONE_TAKEN');
-
-    consumeCode(db, phone, code);
+    if (findUserByName(db, username)) fail('这个用户名已经被用了，换一个吧', 'USERNAME_TAKEN');
 
     const now = Date.now();
+    const pwd = hashValue(password);
+    const ans = hashValue(answer);
+    const recovery = makeRecoveryCode();
+    const rec = hashValue(recovery);
     const token = issueToken();
-    let u = existed;
-    if (!u) {
-      u = {
-        _id: 'u_' + now.toString(36) + rand(8),
-        phone: phone,
-        nickname: payload.nickname ? String(payload.nickname).slice(0, 24) : '',
-        avatar: null,
-        bookId: null,
-        tokens: [],
-        createdAt: now
-      };
-      db.users.push(u);
-    }
-    Object.assign(u, makePassword(password));
-    u.tokens = (u.tokens || []).filter((x) => x.exp > now).slice(-4);
-    u.tokens.push(token);
+
+    const user = {
+      _id: 'u_' + now.toString(36) + rand(8),
+      username: username,
+      nickname: payload.nickname ? String(payload.nickname).slice(0, 24) : username,
+      avatar: null,
+      bookId: null,
+      passwordSalt: pwd.salt,
+      passwordHash: pwd.hash,
+      question: question,
+      answerSalt: ans.salt,
+      answerHash: ans.hash,
+      recoverySalt: rec.salt,
+      recoveryHash: rec.hash,
+      answerFails: 0,
+      answerLockUntil: 0,
+      createdAt: now,
+      tokens: []
+    };
+    attachToken(user, token);
+    db.users.push(user);
     await saveDB(db);
-    return { uid: u._id, token: token.t, expiresAt: token.exp, user: publicUser(u) };
+
+    return {
+      uid: user._id,
+      token: token.t,
+      user: publicUser(user),
+      recoveryCode: recovery // 只在注册时返回一次，让用户保存
+    };
   },
 
-  /* 密码登录 */
+  /* 登录 */
   async login(payload) {
     const db = await loadDB();
-    const phone = String(payload.phone || '').replace(/\D/g, '');
+    const username = normUsername(payload.username);
     const password = String(payload.password || '');
-    if (!/^1\d{10}$/.test(phone)) fail('请输入正确的手机号', 'BAD_PHONE');
+    if (!username) fail('请输入用户名', 'NO_USERNAME');
 
-    const u = db.users.filter((x) => x.phone === phone)[0];
-    if (!u) fail('这个手机号还没注册', 'NO_USER');
-    if (!u.passwordHash) fail('这个账号还没设置密码，请点「忘记密码」设置一个', 'NO_PASSWORD');
-    if (!checkPassword(u, password)) fail('手机号或密码不正确', 'BAD_PASSWORD');
+    const u = findUserByName(db, username);
+    if (!u || !verifyValue(password, u.passwordSalt, u.passwordHash)) {
+      fail('用户名或密码不对', 'BAD_LOGIN');
+    }
 
-    const now = Date.now();
     const token = issueToken();
-    u.tokens = (u.tokens || []).filter((x) => x.exp > now).slice(-4);
-    u.tokens.push(token);
+    attachToken(u, token);
     await saveDB(db);
-    return { uid: u._id, token: token.t, expiresAt: token.exp, user: publicUser(u) };
+    return { uid: u._id, token: token.t, user: publicUser(u) };
   },
 
-  /* 忘记密码：手机号 + 验证码 → 重设密码并登录 */
-  async resetPassword(payload) {
+  /* 找回密码第一步：取密保问题 */
+  async securityQuestion(payload) {
     const db = await loadDB();
-    const phone = String(payload.phone || '').replace(/\D/g, '');
-    const code = String(payload.code || '').trim();
-    const password = assertPassword(payload.password);
-    if (!/^1\d{10}$/.test(phone)) fail('请输入正确的手机号', 'BAD_PHONE');
-
-    const u = db.users.filter((x) => x.phone === phone)[0];
-    if (!u) fail('这个手机号还没注册', 'NO_USER');
-    consumeCode(db, phone, code);
-
-    Object.assign(u, makePassword(password));
-    const token = issueToken();
-    u.tokens = [token]; // 改密码后其它设备需要重新登录
-    await saveDB(db);
-    return { uid: u._id, token: token.t, expiresAt: token.exp, user: publicUser(u) };
+    const u = findUserByName(db, payload.username);
+    if (!u) fail('没有找到这个用户名', 'NO_USER');
+    const lockedUntil = Number(u.answerLockUntil || 0);
+    const locked = lockedUntil > Date.now();
+    return {
+      question: u.question || '',
+      locked: locked,
+      lockedMinutes: locked ? Math.ceil((lockedUntil - Date.now()) / 60000) : 0
+    };
   },
 
-  /* 修改密码（已登录时使用） */
+  /* 找回：回答密保问题 */
+  async resetByAnswer(payload) {
+    const db = await loadDB();
+    const username = normUsername(payload.username);
+    const password = checkPassword(payload.password);
+    const u = findUserByName(db, username);
+    if (!u) fail('没有找到这个用户名', 'NO_USER');
+
+    const lockedUntil = Number(u.answerLockUntil || 0);
+    if (lockedUntil > Date.now()) {
+      fail('尝试次数过多，请 ' + Math.ceil((lockedUntil - Date.now()) / 60000) + ' 分钟后再试', 'LOCKED');
+    }
+
+    const answer = normAnswer(payload.answer);
+    if (!verifyValue(answer, u.answerSalt, u.answerHash)) {
+      u.answerFails = Number(u.answerFails || 0) + 1;
+      if (u.answerFails >= MAX_ANSWER_FAILS) {
+        u.answerFails = 0;
+        u.answerLockUntil = Date.now() + LOCK_MINUTES * 60000;
+        await saveDB(db);
+        fail('答案错误次数过多，已锁定 ' + LOCK_MINUTES + ' 分钟', 'LOCKED');
+      }
+      await saveDB(db);
+      fail('密保答案不对，还可以试 ' + (MAX_ANSWER_FAILS - u.answerFails) + ' 次', 'BAD_ANSWER');
+    }
+
+    const pwd = hashValue(password);
+    u.passwordSalt = pwd.salt;
+    u.passwordHash = pwd.hash;
+    u.answerFails = 0;
+    u.answerLockUntil = 0;
+    const token = issueToken();
+    u.tokens = [token];
+    await saveDB(db);
+    return { uid: u._id, token: token.t, user: publicUser(u) };
+  },
+
+  /* 找回：使用恢复码 */
+  async resetByCode(payload) {
+    const db = await loadDB();
+    const username = normUsername(payload.username);
+    const password = checkPassword(payload.password);
+    const u = findUserByName(db, username);
+    if (!u) fail('没有找到这个用户名', 'NO_USER');
+    if (!u.recoveryHash) fail('这个账号没有设置恢复码', 'NO_RECOVERY');
+
+    const code = String(payload.recoveryCode || '').trim().toUpperCase();
+    if (!verifyValue(code, u.recoverySalt, u.recoveryHash)) fail('恢复码不正确', 'BAD_CODE');
+
+    const pwd = hashValue(password);
+    u.passwordSalt = pwd.salt;
+    u.passwordHash = pwd.hash;
+    u.answerFails = 0;
+    u.answerLockUntil = 0;
+    const token = issueToken();
+    u.tokens = [token];
+    await saveDB(db);
+    return { uid: u._id, token: token.t, user: publicUser(u) };
+  },
+
+  /* 修改密码（已登录，需要原密码） */
   async changePassword(payload) {
     const db = await loadDB();
-    const u = findUser(db, payload.uid, payload.token);
-    const next = assertPassword(payload.password);
-    if (u.passwordHash && !checkPassword(u, payload.oldPassword)) fail('原密码不正确', 'BAD_PASSWORD');
-    Object.assign(u, makePassword(next));
+    const u = userByToken(db, payload.uid, payload.token);
+    if (!verifyValue(String(payload.oldPassword || ''), u.passwordSalt, u.passwordHash)) {
+      fail('原密码不正确', 'BAD_PASSWORD');
+    }
+    const pwd = hashValue(checkPassword(payload.password));
+    u.passwordSalt = pwd.salt;
+    u.passwordHash = pwd.hash;
     await saveDB(db);
     return { ok: true };
   },
 
+  /* 修改密保问题（已登录，需要密码） */
+  async updateSecurity(payload) {
+    const db = await loadDB();
+    const u = userByToken(db, payload.uid, payload.token);
+    if (!verifyValue(String(payload.password || ''), u.passwordSalt, u.passwordHash)) {
+      fail('密码不正确', 'BAD_PASSWORD');
+    }
+    const question = checkQuestion(payload.question);
+    const answer = checkAnswer(payload.answer);
+    const ans = hashValue(answer);
+    u.question = question;
+    u.answerSalt = ans.salt;
+    u.answerHash = ans.hash;
+    u.answerFails = 0;
+    u.answerLockUntil = 0;
+    await saveDB(db);
+    return { user: publicUser(u) };
+  },
+
+  /* 重新生成恢复码（已登录，需要密码） */
+  async regenerateRecovery(payload) {
+    const db = await loadDB();
+    const u = userByToken(db, payload.uid, payload.token);
+    if (!verifyValue(String(payload.password || ''), u.passwordSalt, u.passwordHash)) {
+      fail('密码不正确', 'BAD_PASSWORD');
+    }
+    const recovery = makeRecoveryCode();
+    const rec = hashValue(recovery);
+    u.recoverySalt = rec.salt;
+    u.recoveryHash = rec.hash;
+    await saveDB(db);
+    return { recoveryCode: recovery };
+  },
+
   async signOut(payload) {
     const db = await loadDB();
-    const u = findUser(db, payload.uid, payload.token);
+    const u = userByToken(db, payload.uid, payload.token);
     u.tokens = (u.tokens || []).filter((x) => x.t !== payload.token);
     await saveDB(db);
     return { ok: true };
@@ -388,22 +462,24 @@ const handlers = {
 
   async me(payload) {
     const db = await loadDB();
-    const u = findUser(db, payload.uid, payload.token);
+    const u = userByToken(db, payload.uid, payload.token);
     return { user: publicUser(u), book: publicBook(bookOfUser(db, u)) };
   },
 
   async updateUser(payload) {
     const db = await loadDB();
-    const u = findUser(db, payload.uid, payload.token);
+    const u = userByToken(db, payload.uid, payload.token);
     if (payload.nickname != null) u.nickname = String(payload.nickname).slice(0, 24);
     if (payload.avatar !== undefined) u.avatar = payload.avatar;
     await saveDB(db);
     return { user: publicUser(u) };
   },
 
+  /* ---------- 情侣本 ---------- */
+
   async createBook(payload) {
     const db = await loadDB();
-    const u = findUser(db, payload.uid, payload.token);
+    const u = userByToken(db, payload.uid, payload.token);
     if (u.bookId) return { book: publicBook(bookOfUser(db, u)) };
 
     let code = rand(6).toUpperCase();
@@ -413,7 +489,7 @@ const handlers = {
       _id: 'b_' + Date.now().toString(36) + rand(8),
       code: code,
       title: payload.title || '我们的小日子',
-      myName: payload.myName || '我',
+      myName: payload.myName || u.nickname || '我',
       partnerName: payload.partnerName || '宝贝',
       anniversary: payload.anniversary || '',
       palette: payload.palette || 'pink',
@@ -431,12 +507,14 @@ const handlers = {
 
   async joinBook(payload) {
     const db = await loadDB();
-    const u = findUser(db, payload.uid, payload.token);
+    const u = userByToken(db, payload.uid, payload.token);
     const code = String(payload.code || '').trim().toUpperCase();
     if (!code) fail('请输入邀请码', 'NO_CODE');
     const b = db.books.filter((x) => x.code === code)[0];
     if (!b) fail('邀请码不存在', 'NO_BOOK');
-    if ((b.members || []).length >= 2 && (b.members || []).indexOf(u._id) < 0) fail('这个本子已经有两位主人啦', 'BOOK_FULL');
+    if ((b.members || []).length >= 2 && (b.members || []).indexOf(u._id) < 0) {
+      fail('这个本子已经有两位主人啦', 'BOOK_FULL');
+    }
     b.members = Array.from(new Set((b.members || []).concat([u._id])));
     u.bookId = b._id;
     await saveDB(db);
@@ -445,7 +523,7 @@ const handlers = {
 
   async leaveBook(payload) {
     const db = await loadDB();
-    const u = findUser(db, payload.uid, payload.token);
+    const u = userByToken(db, payload.uid, payload.token);
     if (u.bookId) {
       const b = db.books.filter((x) => x._id === u.bookId)[0];
       if (b) b.members = (b.members || []).filter((m) => m !== u._id);
@@ -457,7 +535,7 @@ const handlers = {
 
   async updateBook(payload) {
     const db = await loadDB();
-    const u = findUser(db, payload.uid, payload.token);
+    const u = userByToken(db, payload.uid, payload.token);
     const b = bookOfUser(db, u);
     if (!b) fail('还没有加入任何本子', 'NO_BOOK');
     ['title', 'myName', 'partnerName', 'anniversary', 'palette', 'theme', 'myAvatar', 'partnerAvatar', 'events'].forEach((k) => {
@@ -468,9 +546,11 @@ const handlers = {
     return { book: publicBook(b) };
   },
 
+  /* ---------- 记录 ---------- */
+
   async listRecords(payload) {
     const db = await loadDB();
-    const u = findUser(db, payload.uid, payload.token);
+    const u = userByToken(db, payload.uid, payload.token);
     const b = bookOfUser(db, u);
     if (!b) return { book: null, records: [] };
     const list = db.records
@@ -483,7 +563,7 @@ const handlers = {
 
   async upsertRecord(payload) {
     const db = await loadDB();
-    const u = findUser(db, payload.uid, payload.token);
+    const u = userByToken(db, payload.uid, payload.token);
     const b = bookOfUser(db, u);
     if (!b) fail('还没有加入任何本子', 'NO_BOOK');
 
@@ -502,7 +582,7 @@ const handlers = {
         h: img.h || 0
       })),
       authorId: u._id,
-      authorName: u.nickname || maskPhone(u.phone),
+      authorName: u.nickname || u.username,
       bookId: b._id,
       updatedAt: Date.now()
     };
@@ -524,7 +604,7 @@ const handlers = {
 
   async removeRecord(payload) {
     const db = await loadDB();
-    const u = findUser(db, payload.uid, payload.token);
+    const u = userByToken(db, payload.uid, payload.token);
     const b = bookOfUser(db, u);
     const rec = db.records.filter((r) => r._id === payload.id)[0];
     if (!b || !rec || rec.bookId !== b._id) fail('记录不存在', 'NO_RECORD');
@@ -533,10 +613,11 @@ const handlers = {
     return { ok: true, images: rec.images || [] };
   },
 
-  /* 上传图片 */
+  /* ---------- 图片 ---------- */
+
   async uploadImage(payload) {
     const db = await loadDB();
-    const u = findUser(db, payload.uid, payload.token);
+    const u = userByToken(db, payload.uid, payload.token);
     const b64 = String(payload.base64 || '');
     if (!b64) fail('没有图片内容', 'NO_FILE');
     const clean = b64.indexOf(',') >= 0 ? b64.slice(b64.indexOf(',') + 1) : b64;
@@ -550,10 +631,9 @@ const handlers = {
     return { fileId: res.fileID };
   },
 
-  /* 图片临时下载地址 */
   async getFileUrl(payload) {
     const db = await loadDB();
-    findUser(db, payload.uid, payload.token);
+    userByToken(db, payload.uid, payload.token);
     const fileIds = (payload.fileIds || []).filter(Boolean);
     if (!fileIds.length) return { urls: {} };
     const res = await app.getTempFileURL({
@@ -567,7 +647,7 @@ const handlers = {
   }
 };
 
-/* 兼容两种调用方式：SDK callFunction 直接传对象；HTTP 访问服务放在 body 里 */
+/* 兼容 SDK 调用与 HTTP 访问服务两种入参 */
 function normalize(raw) {
   let e = raw || {};
   if (typeof e === 'string') {

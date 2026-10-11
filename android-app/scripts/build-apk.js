@@ -10,8 +10,31 @@ const ROOT = path.join(__dirname, '..', '..');
 const APP_DIR = path.join(__dirname, '..');
 const ANDROID_DIR = path.join(APP_DIR, 'android');
 
-const JDK = process.env.JAVA_HOME || 'C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.20.101-hotspot';
-const SDK = process.env.ANDROID_HOME || 'C:\\Users\\oukai\\Android\\Sdk';
+/* 必须用 JDK 17（系统的 JAVA_HOME 可能仍是 1.8，不能直接用） */
+function pickJdk() {
+  const candidates = [
+    process.env.JDK17_HOME,
+    'C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.20.101-hotspot'
+  ].filter(Boolean);
+  candidates.push(process.env.JAVA_HOME);
+  for (const p of candidates) {
+    if (p && fs.existsSync(path.join(p, 'bin', 'java.exe'))) return p;
+  }
+  throw new Error('没有找到 JDK 17，请先安装（winget install EclipseAdoptium.Temurin.17.JDK）');
+}
+
+function pickSdk() {
+  const candidates = [process.env.ANDROID_HOME, process.env.ANDROID_SDK_ROOT, 'C:\\Users\\oukai\\Android\\Sdk'];
+  for (const p of candidates) {
+    if (p && fs.existsSync(path.join(p, 'platform-tools'))) return p;
+  }
+  throw new Error('没有找到 Android SDK');
+}
+
+const JDK = pickJdk();
+const SDK = pickSdk();
+console.log('使用 JDK: ' + JDK);
+console.log('使用 SDK: ' + SDK);
 
 function run(cmd, cwd) {
   console.log('▶ ' + cmd);
