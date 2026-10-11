@@ -10,6 +10,7 @@
  */
 const cloudbase = require('@cloudbase/node-sdk');
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 
 const app = cloudbase.init({ env: cloudbase.SYMBOL_CURRENT_ENV || process.env.TCB_ENV });
 
@@ -19,9 +20,11 @@ const MAX_IMAGES = 9;
 const MAX_ANSWER_FAILS = 5;
 const LOCK_MINUTES = 10;
 
-const EMPTY = { users: [], books: [], records: [] };
+const EMPTY = { users: [], books: [], records: [], emailCodes: [] };
 
-const COLLECTION_KEYS = ['users', 'books', 'records'];
+const COLLECTION_KEYS = ['users', 'books', 'records', 'emailCodes'];
+
+const CODE_MINUTES = 10;
 
 /* ---------------- 存储 ---------------- */
 
@@ -95,6 +98,105 @@ function rand(len, chars) {
   let s = '';
   for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
   return s;
+}
+
+function numCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+/* ---------------- 邮件（QQ 邮箱 SMTP） ---------------- */
+
+let transporter = null;
+
+function mailReady() {
+  return Boolean(process.env.MAIL_USER && process.env.MAIL_PASS);
+}
+
+function getTransporter() {
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      host: process.env.MAIL_HOST || 'smtp.qq.com',
+      port: Number(process.env.MAIL_PORT || 465),
+      secure: true, // 465 端口用 SSL
+      auth: {
+        user: process.env.MAIL_USER,
+        pass: process.env.MAIL_PASS // QQ 邮箱这里填「SMTP 授权码」，不是登录密码
+      }
+    });
+  }
+  return transporter;
+}
+
+async function sendMail(to, code, scene) {
+  if (!mailReady()) return false;
+  const appName = process.env.MAIL_APP_NAME || '朝暮';
+  const titleMap = {
+    reset: '【' + appName + '】找回密码验证码',
+    register: '【' + appName + '】注册验证码',
+    bind: '【' + appName + '】绑定邮箱验证码'
+  };
+  const tipMap = {
+    reset: '你正在找回密码，输入下面的验证码即可重设新密码。',
+    register: '你正在注册账号，输入下面的验证码即可完成注册。',
+    bind: '你正在绑定邮箱，输入下面的验证码即可完成绑定。'
+  };
+  const subject = titleMap[scene] || '【' + appName + '】验证码';
+  const tip = tipMap[scene] || '你的验证码是：';
+
+  await getTransporter().sendMail({
+    from: '"' + appName + '" <' + process.env.MAIL_USER + '>',
+    to: to,
+    subject: subject,
+    text: tip + '\n\n验证码：' + code + '\n有效期 ' + CODE_MINUTES + ' 分钟。\n\n如果不是你本人操作，忽略本邮件即可。',
+    html: `
+      <div style="max-width:520px;margin:0 auto;padding:26px 22px;font-family:-apple-system,'PingFang SC',sans-serif;background:#fff6f9;border-radius:16px">
+        <div style="font-size:19px;font-weight:800;color:#7a1f43;margin-bottom:6px">${appName}</div>
+        <div style="font-size:13px;color:#8b7b90;margin-bottom:20px">朝朝暮暮，都是你</div>
+        <div style="font-size:14px;color:#2f2438;line-height:1.7">${tip}</div>
+        <div style="margin:18px 0;padding:16px;text-align:center;background:linear-gradient(135deg,#ff6b9d,#a78bfa);border-radius:12px">
+          <span style="font-size:30px;font-weight:800;letter-spacing:6px;color:#fff">${code}</span>
+        </div>
+        <div style="font-size:12.5px;color:#8b7b90;line-height:1.7">
+          验证码 ${CODE_MINUTES} 分钟内有效，请勿转发给他人。<br/>
+          如果不是你本人操作，忽略这封邮件就好。
+        </div>
+      </div>`
+  });
+  return true;
+}
+
+/* 生成一条邮箱验证码（60 秒内同一邮箱只发一条） */
+async function issueEmailCode(db, email, scene) {
+  const now = Date.now();
+  const recent = (db.emailCodes || [])
+    .filter((c) => c.email === email && c.scene === scene)
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
+  if (recent && now - recent.createdAt < 60000) fail('验证码刚发过啦，稍等一下再试', 'TOO_FAST');
+
+  const code = numCode();
+  db.emailCodes = (db.emailCodes || []).filter((c) => c.expiresAt > now || c.used);
+  db.emailCodes.push({
+    email: email,
+    code: code,
+    scene: scene,
+    used: false,
+    expiresAt: now + CODE_MINUTES * 60000,
+    createdAt: now
+  });
+  if (db.emailCodes.length > 300) db.emailCodes = db.emailCodes.slice(-300);
+  return code;
+}
+
+/* 校验并消费一条邮箱验证码 */
+function consumeEmailCode(db, email, code, scene) {
+  const now = Date.now();
+  const rows = (db.emailCodes || []).filter(
+    (c) => c.email === email && c.scene === scene && c.code === code && !c.used
+  );
+  const row = rows[rows.length - 1];
+  if (!row) fail('验证码不正确', 'CODE_WRONG');
+  if (row.expiresAt < now) fail('验证码已过期，请重新获取', 'CODE_EXPIRED');
+  row.used = true;
 }
 
 function fail(message, code) {
@@ -285,8 +387,91 @@ const handlers = {
       users: db.users.length,
       books: db.books.length,
       records: db.records.length,
+      mailReady: mailReady(),
+      mailUser: mailReady() ? String(process.env.MAIL_USER).replace(/^(.)[^@]*(@.*)$/, '$1***$2') : '',
       loadError: lastLoadError
     };
+  },
+
+  /* 发送邮箱验证码：scene = register | reset | bind */
+  async sendEmailCode(payload) {
+    const db = await loadDB();
+    const email = checkEmail(payload.email);
+    if (!email) fail('请输入邮箱', 'BAD_EMAIL');
+    const scene = ['register', 'reset', 'bind'].indexOf(payload.scene) >= 0 ? payload.scene : 'register';
+
+    if (scene === 'reset') {
+      const u = findUserByEmail(db, email);
+      if (!u) fail('这个邮箱还没有绑定过账号', 'NO_USER');
+    }
+    if (scene === 'bind') {
+      const other = findUserByEmail(db, email);
+      if (other && other._id !== payload.uid) fail('这个邮箱已经绑给别的账号了', 'EMAIL_TAKEN');
+    }
+
+    const code = await issueEmailCode(db, email, scene);
+    await saveDB(db);
+
+    let sent = false;
+    if (mailReady()) {
+      sent = await sendMail(email, code, scene);
+    }
+    return {
+      sent: sent,
+      expiresInMinutes: CODE_MINUTES,
+      // 没配置邮件服务时把验证码返回给前端（演示模式）
+      devCode: sent ? undefined : code
+    };
+  },
+
+  /* 用邮箱验证码找回密码 */
+  async resetByEmailCode(payload) {
+    const db = await loadDB();
+    const email = checkEmail(payload.email);
+    const code = String(payload.code || '').trim();
+    const password = checkPassword(payload.password);
+    if (!email) fail('请输入邮箱', 'BAD_EMAIL');
+    if (!/^\d{6}$/.test(code)) fail('请输入 6 位验证码', 'BAD_CODE');
+
+    const u = findUserByEmail(db, email);
+    if (!u) fail('这个邮箱还没有绑定过账号', 'NO_USER');
+    consumeEmailCode(db, email, code, 'reset');
+
+    const pwd = hashValue(password);
+    u.passwordSalt = pwd.salt;
+    u.passwordHash = pwd.hash;
+    u.answerFails = 0;
+    u.answerLockUntil = 0;
+    const token = issueToken();
+    u.tokens = [token];
+    await saveDB(db);
+    return { uid: u._id, token: token.t, user: publicUser(u) };
+  },
+
+  /* 绑定邮箱（需要邮箱验证码） */
+  async bindEmail(payload) {
+    const db = await loadDB();
+    const u = userByToken(db, payload.uid, payload.token);
+    const email = checkEmail(payload.email);
+    if (!email) fail('请输入邮箱', 'BAD_EMAIL');
+    const other = findUserByEmail(db, email);
+    if (other && other._id !== u._id) fail('这个邮箱已经绑给别的账号了', 'EMAIL_TAKEN');
+    consumeEmailCode(db, email, String(payload.code || '').trim(), 'bind');
+    u.email = email;
+    await saveDB(db);
+    return { user: publicUser(u) };
+  },
+
+  /* 解绑邮箱 */
+  async unbindEmail(payload) {
+    const db = await loadDB();
+    const u = userByToken(db, payload.uid, payload.token);
+    if (!verifyValue(String(payload.password || ''), u.passwordSalt, u.passwordHash)) {
+      fail('密码不正确', 'BAD_PASSWORD');
+    }
+    u.email = '';
+    await saveDB(db);
+    return { user: publicUser(u) };
   },
 
   /* 注册：用户名 或 邮箱 + 密码 + 密保问题 */
@@ -318,7 +503,13 @@ const handlers = {
       username = candidate;
     }
 
-    if (email && findUserByEmail(db, email)) fail('这个邮箱已经注册过了，直接登录吧', 'EMAIL_TAKEN');
+    if (email) {
+      if (findUserByEmail(db, email)) fail('这个邮箱已经注册过了，直接登录吧', 'EMAIL_TAKEN');
+      // 用邮箱注册时需要邮箱验证码，确保邮箱是真实可收信的
+      const emailCode = String(payload.emailCode || '').trim();
+      if (!/^\d{6}$/.test(emailCode)) fail('请先获取邮箱验证码', 'NO_EMAIL_CODE');
+      consumeEmailCode(db, email, emailCode, 'register');
+    }
 
     const now = Date.now();
     const pwd = hashValue(password);

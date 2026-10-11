@@ -94,6 +94,14 @@
       <div class="field">
         <label class="field__label" for="fEmail">邮箱</label>
         <input class="input" id="fEmail" type="email" maxlength="60" placeholder="you@example.com" autocomplete="email" />
+      </div>
+      <div class="field">
+        <label class="field__label" for="fEmailCode">邮箱验证码</label>
+        <div class="row" style="align-items:center">
+          <input class="input" id="fEmailCode" type="text" inputmode="numeric" maxlength="6"
+                 placeholder="6 位验证码" autocomplete="one-time-code" />
+          <button class="btn btn--ghost btn--sm" id="actSendMail" type="button" style="flex:none;white-space:nowrap">获取验证码</button>
+        </div>
       </div>`
         : `
       <div class="field">
@@ -133,33 +141,57 @@
   function forgotHtml() {
     const tab = (key, label) =>
       `<button class="chip${forgotMode === key ? ' is-on' : ''}" type="button" data-forgot="${key}">${label}</button>`;
+
+    const online = Cloud.isOnline();
+    const hint = online
+      ? '答密保问题、用恢复码，或者用邮箱收验证码'
+      : '本地演示模式下，邮箱验证码会直接显示出来';
+
+    let body = '';
+    if (forgotMode === 'email') {
+      const guess = lastIdentifier.indexOf('@') >= 0 ? lastIdentifier : '';
+      body = `
+        <div class="field">
+          <label class="field__label" for="fEmail">邮箱</label>
+          <input class="input" id="fEmail" type="email" maxlength="60" placeholder="注册/绑定时用的邮箱"
+                 value="${UI.escapeHtml(guess)}" autocomplete="email" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="fEmailCode">验证码</label>
+          <div class="row" style="align-items:center">
+            <input class="input" id="fEmailCode" type="text" inputmode="numeric" maxlength="6"
+                   placeholder="6 位验证码" autocomplete="one-time-code" />
+            <button class="btn btn--ghost btn--sm" id="actSendMail" type="button" style="flex:none;white-space:nowrap">获取验证码</button>
+          </div>
+        </div>`;
+    } else if (forgotMode === 'answer') {
+      body = `
+        ${identifierField('用户名 / 邮箱')}
+        <button class="btn btn--ghost btn--block btn--sm" id="actAsk" type="button">查看我的密保问题</button>
+        <div id="fQuestionBox" style="display:${askedQuestion ? 'block' : 'none'}">
+          <div class="auth__tip" id="fQuestionText">${UI.escapeHtml(askedQuestion)}</div>
+          <div class="field">
+            <label class="field__label" for="fAnswer">答案</label>
+            <input class="input" id="fAnswer" maxlength="40" placeholder="请输入密保答案" />
+          </div>
+        </div>`;
+    } else {
+      body = `
+        ${identifierField('用户名 / 邮箱')}
+        <div class="field">
+          <label class="field__label" for="fRecovery">恢复码</label>
+          <input class="input" id="fRecovery" maxlength="24" placeholder="XXXX-XXXX-XXXX-XXXX"
+                 style="letter-spacing:2px;text-transform:uppercase" />
+        </div>`;
+    }
+
     return `
       <div class="auth">
-        ${heroHtml('🔑', '找回密码', '两条路随你选：答对密保问题，或使用注册时的恢复码')}
+        ${heroHtml('🔑', '找回密码', hint)}
         <div class="card auth__card">
           ${tabsHtml()}
-          <div class="chips" style="margin:0 0 14px;padding:0">${tab('answer', '回答密保问题')}${tab('code', '用恢复码')}</div>
-          ${identifierField('用户名 / 邮箱')}
-
-          ${
-            forgotMode === 'answer'
-              ? `
-            <button class="btn btn--ghost btn--block btn--sm" id="actAsk" type="button">查看我的密保问题</button>
-            <div id="fQuestionBox" style="display:${askedQuestion ? 'block' : 'none'}">
-              <div class="auth__tip" id="fQuestionText">${UI.escapeHtml(askedQuestion)}</div>
-              <div class="field">
-                <label class="field__label" for="fAnswer">答案</label>
-                <input class="input" id="fAnswer" maxlength="40" placeholder="请输入密保答案" />
-              </div>
-            </div>`
-              : `
-            <div class="field">
-              <label class="field__label" for="fRecovery">恢复码</label>
-              <input class="input" id="fRecovery" maxlength="24" placeholder="XXXX-XXXX-XXXX-XXXX"
-                     style="letter-spacing:2px;text-transform:uppercase" />
-            </div>`
-          }
-
+          <div class="chips" style="margin:0 0 14px;padding:0">${tab('answer', '密保问题')}${tab('code', '恢复码')}${tab('email', '邮箱验证码')}</div>
+          ${body}
           <div class="field">
             <label class="field__label" for="fPassword">新密码</label>
             <input class="input" id="fPassword" type="password" maxlength="32" placeholder="至少 6 位" autocomplete="new-password" />
@@ -242,6 +274,51 @@
     App.enterApp();
   }
 
+  let mailCountdown = 0;
+  let mailTimer = null;
+
+  function startMailCountdown(btn) {
+    mailCountdown = 60;
+    clearInterval(mailTimer);
+    btn.disabled = true;
+    btn.textContent = mailCountdown + ' 秒后重发';
+    mailTimer = setInterval(() => {
+      mailCountdown--;
+      if (mailCountdown <= 0) {
+        clearInterval(mailTimer);
+        btn.disabled = false;
+        btn.textContent = '获取验证码';
+        return;
+      }
+      btn.textContent = mailCountdown + ' 秒后重发';
+    }, 1000);
+  }
+
+  async function onSendMail(body, btn) {
+    const emailInput = body.querySelector('#fEmail');
+    const email = emailInput ? String(emailInput.value || '').trim() : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      UI.toast('请先填写正确的邮箱');
+      return;
+    }
+    const scene = authMode === 'register' ? 'register' : 'reset';
+    busy(btn, '发送中…');
+    try {
+      const res = await Cloud.api.sendEmailCode(email, scene);
+      const codeInput = body.querySelector('#fEmailCode');
+      if (res && res.devCode) {
+        UI.toast('演示模式验证码：' + res.devCode);
+        if (codeInput) codeInput.value = res.devCode;
+      } else {
+        UI.toast('验证码已发送，请查收邮件');
+      }
+      startMailCountdown(btn);
+    } catch (err) {
+      idle(btn, '获取验证码');
+      UI.toast(err.message || '发送失败');
+    }
+  }
+
   function showRecoverySheet(code) {
     const html = `
       <div class="sheet__title">
@@ -277,6 +354,7 @@
   async function onRegister(body, btn) {
     const username = signupMode === 'username' ? val(body, 'fUsername') : '';
     const email = signupMode === 'email' ? val(body, 'fEmail') : '';
+    const emailCode = signupMode === 'email' ? val(body, 'fEmailCode') : '';
     const pwd = val(body, 'fPassword');
     const pwd2 = val(body, 'fPassword2');
     const custom = val(body, 'fQuestion');
@@ -288,6 +366,7 @@
       lastIdentifier = username;
     } else {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return UI.toast('邮箱格式看起来不太对');
+      if (!/^\d{6}$/.test(emailCode)) return UI.toast('请填写邮箱收到的 6 位验证码');
       lastIdentifier = email;
     }
     if (pwd.length < 6) return UI.toast('密码至少 6 位');
@@ -300,6 +379,7 @@
       const res = await Cloud.api.register({
         username: username,
         email: email,
+        emailCode: emailCode,
         password: pwd,
         question: question,
         answer: answer
@@ -363,28 +443,46 @@
   }
 
   async function onReset(body, btn) {
-    const identifier = val(body, 'fIdentifier');
     const password = val(body, 'fPassword');
-    if (!identifier) return UI.toast('请输入用户名或邮箱');
     if (password.length < 6) return UI.toast('新密码至少 6 位');
-    lastIdentifier = identifier;
     busy(btn, '提交中…');
 
     try {
-      if (forgotMode === 'answer') {
-        const answer = val(body, 'fAnswer');
-        if (!answer) {
+      if (forgotMode === 'email') {
+        const email = val(body, 'fEmail');
+        const code = val(body, 'fEmailCode');
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
           idle(btn, '重设密码并登录');
-          return UI.toast('请输入密保答案');
+          return UI.toast('请输入邮箱');
         }
-        await Cloud.api.resetByAnswer(identifier, answer, password);
+        if (!/^\d{6}$/.test(code)) {
+          idle(btn, '重设密码并登录');
+          return UI.toast('请输入 6 位验证码');
+        }
+        lastIdentifier = email;
+        await Cloud.api.resetByEmailCode(email, code, password);
       } else {
-        const code = val(body, 'fRecovery');
-        if (!code) {
+        const identifier = val(body, 'fIdentifier');
+        if (!identifier) {
           idle(btn, '重设密码并登录');
-          return UI.toast('请输入恢复码');
+          return UI.toast('请输入用户名或邮箱');
         }
-        await Cloud.api.resetByCode(identifier, code, password);
+        lastIdentifier = identifier;
+        if (forgotMode === 'answer') {
+          const answer = val(body, 'fAnswer');
+          if (!answer) {
+            idle(btn, '重设密码并登录');
+            return UI.toast('请输入密保答案');
+          }
+          await Cloud.api.resetByAnswer(identifier, answer, password);
+        } else {
+          const code = val(body, 'fRecovery');
+          if (!code) {
+            idle(btn, '重设密码并登录');
+            return UI.toast('请输入恢复码');
+          }
+          await Cloud.api.resetByCode(identifier, code, password);
+        }
       }
       UI.toast('密码已重设 ❤');
       await afterAuth();
@@ -475,6 +573,7 @@
       }
 
       const hit = (sel) => e.target.closest(sel);
+      if (hit('#actSendMail')) return onSendMail(body, body.querySelector('#actSendMail'));
       if (hit('#actLogin')) return onLogin(body, body.querySelector('#actLogin'));
       if (hit('#actRegister')) return onRegister(body, body.querySelector('#actRegister'));
       if (hit('#actAsk')) return onAskQuestion(body, body.querySelector('#actAsk'));
@@ -496,6 +595,10 @@
         return;
       }
       if (id === 'fPassword2') return onRegister(body, body.querySelector('#actRegister'));
+      if (id === 'fEmailCode') {
+        if (authMode === 'register') return onRegister(body, body.querySelector('#actRegister'));
+        return onReset(body, body.querySelector('#actReset'));
+      }
       if (id === 'fAnswer') {
         if (authMode === 'register') return onRegister(body, body.querySelector('#actRegister'));
         return onReset(body, body.querySelector('#actReset'));

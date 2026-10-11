@@ -18,8 +18,9 @@
     } catch (err) {
       db = null;
     }
-    if (!db || !db.users) db = { users: [], books: [], records: [], files: {} };
+    if (!db || !db.users) db = { users: [], books: [], records: [], files: {}, emailCodes: [] };
     if (!db.files) db.files = {};
+    if (!db.emailCodes) db.emailCodes = [];
     return db;
   }
 
@@ -107,6 +108,17 @@
     };
   }
 
+  function consumeLocalCode(email, code, scene) {
+    const now = Date.now();
+    const rows = db.emailCodes.filter(
+      (c) => c.email === email && c.scene === scene && c.code === code && !c.used
+    );
+    const row = rows[rows.length - 1];
+    if (!row) fail('验证码不正确', 'CODE_WRONG');
+    if (row.expiresAt < now) fail('验证码已过期，请重新获取', 'CODE_EXPIRED');
+    row.used = true;
+  }
+
   function findByIdentifier(idf) {
     const v = String(idf || '').trim().toLowerCase();
     if (!v) return null;
@@ -145,6 +157,62 @@
       return { ok: true, users: db.users.length, books: db.books.length, records: db.records.length };
     },
 
+    async sendEmailCode(p) {
+      const email = String(p.email || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail('邮箱格式看起来不太对', 'BAD_EMAIL');
+      const scene = ['register', 'reset', 'bind'].indexOf(p.scene) >= 0 ? p.scene : 'register';
+      if (scene === 'reset' && !db.users.some((x) => x.email === email)) fail('这个邮箱还没有绑定过账号', 'NO_USER');
+      if (scene === 'bind') {
+        const other = db.users.filter((x) => x.email === email)[0];
+        if (other && other._id !== p.uid) fail('这个邮箱已经绑给别的账号了', 'EMAIL_TAKEN');
+      }
+      const now = Date.now();
+      const recent = db.emailCodes
+        .filter((c) => c.email === email && c.scene === scene)
+        .sort((a, b) => b.createdAt - a.createdAt)[0];
+      if (recent && now - recent.createdAt < 60000) fail('验证码刚发过啦，稍等一下再试', 'TOO_FAST');
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      db.emailCodes.push({ email, code, scene, used: false, expiresAt: now + 600000, createdAt: now });
+      save();
+      // 本地演示：不发真邮件，直接把验证码返回
+      return { sent: false, expiresInMinutes: 10, devCode: code };
+    },
+
+    async resetByEmailCode(p) {
+      const email = String(p.email || '').trim().toLowerCase();
+      const u = db.users.filter((x) => x.email === email)[0];
+      if (!u) fail('这个邮箱还没有绑定过账号', 'NO_USER');
+      if (String(p.password || '').length < 6) fail('密码至少 6 位', 'WEAK_PASSWORD');
+      consumeLocalCode(email, String(p.code || '').trim(), 'reset');
+      u.password = String(p.password);
+      u.answerFails = 0;
+      u.answerLockUntil = 0;
+      const token = newToken();
+      u.tokens = [token];
+      save();
+      return { uid: u._id, token: token.t, user: publicUser(u) };
+    },
+
+    async bindEmail(p) {
+      const u = findUser(p.uid, p.token);
+      const email = String(p.email || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail('邮箱格式看起来不太对', 'BAD_EMAIL');
+      const other = db.users.filter((x) => x.email === email)[0];
+      if (other && other._id !== u._id) fail('这个邮箱已经绑给别的账号了', 'EMAIL_TAKEN');
+      consumeLocalCode(email, String(p.code || '').trim(), 'bind');
+      u.email = email;
+      save();
+      return { user: publicUser(u) };
+    },
+
+    async unbindEmail(p) {
+      const u = findUser(p.uid, p.token);
+      if (u.password !== String(p.password || '')) fail('密码不正确', 'BAD_PASSWORD');
+      u.email = '';
+      save();
+      return { user: publicUser(u) };
+    },
+
     async register(p) {
       const email = String(p.email || '').trim().toLowerCase();
       if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail('邮箱格式看起来不太对', 'BAD_EMAIL');
@@ -164,7 +232,12 @@
         }
         username = candidate;
       }
-      if (email && db.users.some((x) => x.email === email)) fail('这个邮箱已经注册过了，直接登录吧', 'EMAIL_TAKEN');
+      if (email) {
+        if (db.users.some((x) => x.email === email)) fail('这个邮箱已经注册过了，直接登录吧', 'EMAIL_TAKEN');
+        const ec = String(p.emailCode || '').trim();
+        if (!/^\d{6}$/.test(ec)) fail('请先获取邮箱验证码', 'NO_EMAIL_CODE');
+        consumeLocalCode(email, ec, 'register');
+      }
       if (String(p.password || '').length < 6) fail('密码至少 6 位', 'WEAK_PASSWORD');
       if (!String(p.question || '').trim()) fail('请选择或填写密保问题', 'BAD_QUESTION');
       const answer = normAnswer(p.answer);

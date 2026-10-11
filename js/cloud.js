@@ -131,6 +131,7 @@
         Cloud.call('register', {
           username: info.username || '',
           email: info.email || '',
+          emailCode: info.emailCode || '',
           password: info.password,
           question: info.question,
           answer: info.answer
@@ -170,6 +171,19 @@
 
       updateEmail: (password, email) =>
         Cloud.call('updateEmail', { password: password, email: email }),
+
+      /* 邮箱验证码：scene = register | reset | bind */
+      sendEmailCode: (email, scene) => Cloud.call('sendEmailCode', { email: email, scene: scene }),
+
+      resetByEmailCode: (email, code, password) =>
+        Cloud.call('resetByEmailCode', { email: email, code: code, password: password }).then((d) => {
+          Cloud.setSession({ uid: d.uid, token: d.token });
+          return d;
+        }),
+
+      bindEmail: (email, code) => Cloud.call('bindEmail', { email: email, code: code }),
+
+      unbindEmail: (password) => Cloud.call('unbindEmail', { password: password }),
 
       changePassword: (oldPassword, password) =>
         Cloud.call('changePassword', { oldPassword: oldPassword, password: password }),

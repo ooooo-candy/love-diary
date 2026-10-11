@@ -1279,12 +1279,23 @@
       </div>
 
       <div class="field">
-        <span class="field__label">绑定邮箱（之后可用邮箱登录）</span>
+        <span class="field__label">${me.email ? '更换绑定邮箱' : '绑定邮箱'}（绑定后可用邮箱登录）</span>
         <input class="input" id="emEmail" type="email" maxlength="60" placeholder="you@example.com"
                value="${UI.escapeHtml(me.email || '')}" style="margin-bottom:8px" />
-        <input class="input" id="emPassword" type="password" maxlength="32" placeholder="输入登录密码以确认" />
+        <div class="row" style="align-items:center;margin-bottom:8px">
+          <input class="input" id="emCode" type="text" inputmode="numeric" maxlength="6" placeholder="邮箱验证码" />
+          <button class="btn btn--ghost btn--sm" id="actSendBindMail" type="button" style="flex:none;white-space:nowrap">获取验证码</button>
+        </div>
+        <input class="input" id="emPassword" type="password" maxlength="32" placeholder="解绑邮箱时需要密码" />
       </div>
-      <button class="btn btn--ghost btn--block btn--sm" type="button" data-act="save-email">保存邮箱</button>
+      <div class="row" style="margin-top:6px">
+        ${
+          me.email
+            ? '<button class="btn btn--ghost btn--sm" type="button" data-act="unbind-email">解绑邮箱</button>'
+            : ''
+        }
+        <button class="btn btn--primary btn--sm" type="button" data-act="save-email">确认绑定</button>
+      </div>
 
       <div class="field">
         <span class="field__label">① 修改密码</span>
@@ -1337,23 +1348,76 @@
       if (!btn) return;
       const act = btn.dataset.act;
 
+      if (act === 'send-bind-mail') {
+        const email = body.querySelector('#emEmail').value.trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return UI.toast('请先填写正确的邮箱');
+        btn.disabled = true;
+        btn.textContent = '发送中…';
+        try {
+          const res = await Cloud.api.sendEmailCode(email, 'bind');
+          const codeInput = body.querySelector('#emCode');
+          if (res && res.devCode) {
+            UI.toast('演示模式验证码：' + res.devCode);
+            if (codeInput) codeInput.value = res.devCode;
+          } else {
+            UI.toast('验证码已发送，请查收邮件');
+          }
+          let n = 60;
+          btn.textContent = n + ' 秒后重发';
+          const timer = setInterval(() => {
+            n--;
+            if (n <= 0) {
+              clearInterval(timer);
+              btn.disabled = false;
+              btn.textContent = '获取验证码';
+              return;
+            }
+            btn.textContent = n + ' 秒后重发';
+          }, 1000);
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = '获取验证码';
+          UI.toast(err.message || '发送失败');
+        }
+        return;
+      }
+
       if (act === 'save-email') {
         const email = body.querySelector('#emEmail').value.trim();
-        const password = body.querySelector('#emPassword').value;
-        if (!password) return UI.toast('请输入登录密码');
-        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return UI.toast('邮箱格式看起来不太对');
+        const code = body.querySelector('#emCode').value.trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return UI.toast('邮箱格式看起来不太对');
+        if (!/^\d{6}$/.test(code)) return UI.toast('请填写邮箱收到的 6 位验证码');
         btn.disabled = true;
         btn.textContent = '提交中…';
         try {
-          await Cloud.api.updateEmail(password, email);
+          await Cloud.api.bindEmail(email, code);
           await Store.sync();
           UI.closeSheet();
           openSecurity();
-          UI.toast(email ? '邮箱已绑定 ❤' : '已解绑邮箱');
+          UI.toast('邮箱已绑定 ❤');
         } catch (err) {
           btn.disabled = false;
-          btn.textContent = '保存邮箱';
-          UI.toast(err.message || '保存失败');
+          btn.textContent = '确认绑定';
+          UI.toast(err.message || '绑定失败');
+        }
+        return;
+      }
+
+      if (act === 'unbind-email') {
+        const password = body.querySelector('#emPassword').value;
+        if (!password) return UI.toast('请输入登录密码');
+        btn.disabled = true;
+        btn.textContent = '提交中…';
+        try {
+          await Cloud.api.unbindEmail(password);
+          await Store.sync();
+          UI.closeSheet();
+          openSecurity();
+          UI.toast('已解绑邮箱');
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = '解绑邮箱';
+          UI.toast(err.message || '解绑失败');
         }
         return;
       }
