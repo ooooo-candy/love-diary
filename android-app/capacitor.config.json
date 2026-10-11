@@ -1,6 +1,6 @@
 {
   "appId": "com.oukai.lovediary",
-  "appName": "小日子",
+  "appName": "朝暮",
   "webDir": "../public",
   "bundledWebRuntime": false,
   "android": {

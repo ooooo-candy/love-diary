@@ -127,40 +127,49 @@
     },
 
     api: {
-      register: (username, password, question, answer) =>
+      register: (info) =>
         Cloud.call('register', {
-          username: username,
-          password: password,
-          question: question,
-          answer: answer
+          username: info.username || '',
+          email: info.email || '',
+          password: info.password,
+          question: info.question,
+          answer: info.answer
         }).then((d) => {
           Cloud.setSession({ uid: d.uid, token: d.token });
           return d;
         }),
 
-      login: (username, password) =>
-        Cloud.call('login', { username: username, password: password }).then((d) => {
+      login: (identifier, password) =>
+        Cloud.call('login', { identifier: identifier, password: password }).then((d) => {
           Cloud.setSession({ uid: d.uid, token: d.token });
           return d;
         }),
 
-      securityQuestion: (username) => Cloud.call('securityQuestion', { username: username }),
+      securityQuestion: (identifier) =>
+        Cloud.call('securityQuestion', { identifier: identifier }),
 
-      resetByAnswer: (username, answer, password) =>
-        Cloud.call('resetByAnswer', { username: username, answer: answer, password: password }).then((d) => {
+      resetByAnswer: (identifier, answer, password) =>
+        Cloud.call('resetByAnswer', {
+          identifier: identifier,
+          answer: answer,
+          password: password
+        }).then((d) => {
           Cloud.setSession({ uid: d.uid, token: d.token });
           return d;
         }),
 
-      resetByCode: (username, recoveryCode, password) =>
+      resetByCode: (identifier, recoveryCode, password) =>
         Cloud.call('resetByCode', {
-          username: username,
+          identifier: identifier,
           recoveryCode: recoveryCode,
           password: password
         }).then((d) => {
           Cloud.setSession({ uid: d.uid, token: d.token });
           return d;
         }),
+
+      updateEmail: (password, email) =>
+        Cloud.call('updateEmail', { password: password, email: email }),
 
       changePassword: (oldPassword, password) =>
         Cloud.call('changePassword', { oldPassword: oldPassword, password: password }),

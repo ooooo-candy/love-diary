@@ -107,6 +107,13 @@
     };
   }
 
+  function findByIdentifier(idf) {
+    const v = String(idf || '').trim().toLowerCase();
+    if (!v) return null;
+    if (v.indexOf('@') >= 0) return db.users.filter((x) => x.email === v)[0] || null;
+    return db.users.filter((x) => x.username === v)[0] || null;
+  }
+
   function findUser(uid, token) {
     if (!uid || !token) fail('请先登录', 'NO_AUTH');
     const u = db.users.filter((x) => x._id === uid)[0];
@@ -139,19 +146,36 @@
     },
 
     async register(p) {
-      const username = normUsername(p.username);
-      if (!/^[a-z0-9_]{3,20}$/.test(username)) fail('用户名需 3~20 位字母、数字或下划线', 'BAD_USERNAME');
+      const email = String(p.email || '').trim().toLowerCase();
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail('邮箱格式看起来不太对', 'BAD_EMAIL');
+      let username = normUsername(p.username);
+      if (username) {
+        if (!/^[a-z0-9_]{3,20}$/.test(username)) fail('用户名需 3~20 位字母、数字或下划线', 'BAD_USERNAME');
+        if (db.users.some((x) => x.username === username)) fail('这个用户名已经被用了，换一个吧', 'USERNAME_TAKEN');
+      } else {
+        if (!email) fail('请填写用户名或邮箱', 'NO_IDENTITY');
+        const base = (email.split('@')[0] || 'user').replace(/[^a-z0-9_]/g, '').slice(0, 12) || 'user';
+        let candidate = base;
+        let i = 1;
+        while (candidate.length < 3 || db.users.some((x) => x.username === candidate)) {
+          candidate = base + i;
+          i++;
+          if (i > 500) { candidate = 'u' + rand(8); break; }
+        }
+        username = candidate;
+      }
+      if (email && db.users.some((x) => x.email === email)) fail('这个邮箱已经注册过了，直接登录吧', 'EMAIL_TAKEN');
       if (String(p.password || '').length < 6) fail('密码至少 6 位', 'WEAK_PASSWORD');
       if (!String(p.question || '').trim()) fail('请选择或填写密保问题', 'BAD_QUESTION');
       const answer = normAnswer(p.answer);
       if (answer.length < 2) fail('密保答案至少 2 个字符', 'BAD_ANSWER');
-      if (db.users.some((x) => x.username === username)) fail('这个用户名已经被用了，换一个吧', 'USERNAME_TAKEN');
 
       const recovery = makeRecoveryCode();
       const token = newToken();
       const u = {
         _id: 'u_' + rand(10),
         username: username,
+        email: email,
         nickname: p.nickname ? String(p.nickname).slice(0, 24) : username,
         avatar: null,
         bookId: null,
@@ -171,18 +195,34 @@
     },
 
     async login(p) {
-      const username = normUsername(p.username);
-      const u = db.users.filter((x) => x.username === username)[0];
-      if (!u || u.password !== String(p.password || '')) fail('用户名或密码不对', 'BAD_LOGIN');
+      const idf = String(p.identifier || p.username || '').trim().toLowerCase();
+      const u = idf.indexOf('@') >= 0
+        ? db.users.filter((x) => x.email === idf)[0]
+        : db.users.filter((x) => x.username === idf)[0];
+      if (!u || u.password !== String(p.password || '')) fail('账号或密码不对', 'BAD_LOGIN');
       const token = newToken();
       attachToken(u, token);
       save();
       return { uid: u._id, token: token.t, user: publicUser(u) };
     },
 
+    async updateEmail(p) {
+      const u = findUser(p.uid, p.token);
+      if (u.password !== String(p.password || '')) fail('密码不正确', 'BAD_PASSWORD');
+      const email = String(p.email || '').trim().toLowerCase();
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail('邮箱格式看起来不太对', 'BAD_EMAIL');
+      if (email && db.users.some((x) => x.email === email && x._id !== u._id)) fail('这个邮箱已经绑给别的账号了', 'EMAIL_TAKEN');
+      u.email = email;
+      save();
+      return { user: publicUser(u) };
+    },
+
     async securityQuestion(p) {
-      const u = db.users.filter((x) => x.username === normUsername(p.username))[0];
-      if (!u) fail('没有找到这个用户名', 'NO_USER');
+      const idf = String(p.identifier || p.username || '').trim().toLowerCase();
+      const u = idf.indexOf('@') >= 0
+        ? db.users.filter((x) => x.email === idf)[0]
+        : db.users.filter((x) => x.username === idf)[0];
+      if (!u) fail('没有找到这个账号', 'NO_USER');
       const lockedUntil = Number(u.answerLockUntil || 0);
       const locked = lockedUntil > now();
       return {
@@ -194,8 +234,8 @@
 
     async resetByAnswer(p) {
       if (String(p.password || '').length < 6) fail('密码至少 6 位', 'WEAK_PASSWORD');
-      const u = db.users.filter((x) => x.username === normUsername(p.username))[0];
-      if (!u) fail('没有找到这个用户名', 'NO_USER');
+      const u = findByIdentifier(p.identifier || p.username);
+      if (!u) fail('没有找到这个账号', 'NO_USER');
       const lockedUntil = Number(u.answerLockUntil || 0);
       if (lockedUntil > now()) fail('尝试次数过多，请稍后再试', 'LOCKED');
       if (normAnswer(p.answer) !== u.answer) {
@@ -220,8 +260,8 @@
 
     async resetByCode(p) {
       if (String(p.password || '').length < 6) fail('密码至少 6 位', 'WEAK_PASSWORD');
-      const u = db.users.filter((x) => x.username === normUsername(p.username))[0];
-      if (!u) fail('没有找到这个用户名', 'NO_USER');
+      const u = findByIdentifier(p.identifier || p.username);
+      if (!u) fail('没有找到这个账号', 'NO_USER');
       const code = String(p.recoveryCode || '').trim().toUpperCase();
       if (!u.recoveryCode || code !== u.recoveryCode) fail('恢复码不正确', 'BAD_CODE');
       u.password = String(p.password);

@@ -1,13 +1,14 @@
-/* 账号：注册 / 登录 / 找回密码（密保问题 或 恢复码） + 创建或加入情侣本 */
+/* 账号：注册（用户名 / 邮箱）/ 登录 / 找回密码（密保问题 或 恢复码） + 创建或加入情侣本 */
 (function () {
   'use strict';
 
   let authMode = 'login';        // login | register | forgot
+  let signupMode = 'username';   // username | email
   let forgotMode = 'answer';     // answer | code
   let joinStep = 'create';       // create | join
-  let lastUsername = '';
+  let lastIdentifier = '';
   let pickedQuestion = '';
-  let askedQuestion = '';        // 找回时查到的问题
+  let askedQuestion = '';
 
   const QUESTIONS = [
     '我们在一起的日子是？',
@@ -34,22 +35,41 @@
     return `<div class="chips" style="margin:0 0 16px;padding:0">${item('login', '登录')}${item('register', '注册')}${item('forgot', '忘记密码')}</div>`;
   }
 
-  function usernameField() {
+  /* 登录 / 找回 用的统一账号输入框（用户名或邮箱） */
+  function identifierField(label, hint) {
     return `
       <div class="field">
-        <label class="field__label" for="fUsername">用户名</label>
-        <input class="input" id="fUsername" type="text" maxlength="20" autocomplete="username"
-               placeholder="3~20 位字母、数字或下划线" value="${UI.escapeHtml(lastUsername)}" />
+        <label class="field__label" for="fIdentifier">${label || '用户名 / 邮箱'}</label>
+        <input class="input" id="fIdentifier" type="text" maxlength="60" autocomplete="username"
+               placeholder="${hint || '用户名或邮箱都可以'}" value="${UI.escapeHtml(lastIdentifier)}" />
+      </div>`;
+  }
+
+  function questionFields() {
+    const chips = QUESTIONS.map(
+      (q) =>
+        `<button class="chip${pickedQuestion === q ? ' is-on' : ''}" type="button" data-q="${UI.escapeHtml(q)}">${UI.escapeHtml(q)}</button>`
+    ).join('');
+    return `
+      <div class="field">
+        <span class="field__label">密保问题（忘记密码时用）</span>
+        <div class="chips" id="fQuestions" style="margin:0 0 8px;padding:0">${chips}</div>
+        <input class="input" id="fQuestion" maxlength="60" placeholder="也可以自己写一个问题"
+               value="${UI.escapeHtml(QUESTIONS.indexOf(pickedQuestion) >= 0 ? '' : pickedQuestion)}" />
+      </div>
+      <div class="field">
+        <label class="field__label" for="fAnswer">密保答案</label>
+        <input class="input" id="fAnswer" maxlength="40" placeholder="建议简短，例如 20230520" />
       </div>`;
   }
 
   function loginHtml() {
     return `
       <div class="auth">
-        ${heroHtml('💞', '我们的小日子', '登录后记录会同步到云端<br/>两个人、多台手机看到同一份回忆')}
+        ${heroHtml('💞', '朝暮', '朝朝暮暮，都是你<br/>登录后记录会同步到云端，两台手机看到同一份回忆')}
         <div class="card auth__card">
           ${tabsHtml()}
-          ${usernameField()}
+          ${identifierField()}
           <div class="field">
             <label class="field__label" for="fPassword">密码</label>
             <input class="input" id="fPassword" type="password" maxlength="32" placeholder="请输入密码" autocomplete="current-password" />
@@ -65,16 +85,29 @@
   }
 
   function registerHtml() {
-    const chips = QUESTIONS.map(
-      (q) =>
-        `<button class="chip${pickedQuestion === q ? ' is-on' : ''}" type="button" data-q="${UI.escapeHtml(q)}">${UI.escapeHtml(q)}</button>`
-    ).join('');
+    const modeChip = (key, label) =>
+      `<button class="chip${signupMode === key ? ' is-on' : ''}" type="button" data-signup="${key}">${label}</button>`;
+
+    const idField =
+      signupMode === 'email'
+        ? `
+      <div class="field">
+        <label class="field__label" for="fEmail">邮箱</label>
+        <input class="input" id="fEmail" type="email" maxlength="60" placeholder="you@example.com" autocomplete="email" />
+      </div>`
+        : `
+      <div class="field">
+        <label class="field__label" for="fUsername">用户名</label>
+        <input class="input" id="fUsername" maxlength="20" placeholder="3~20 位字母、数字或下划线" autocomplete="username" />
+      </div>`;
+
     return `
       <div class="auth">
-        ${heroHtml('💌', '注册一个账号', '用户名 + 密码就能用，找回密码靠密保问题')}
+        ${heroHtml('💌', '创建一个账号', '用用户名或邮箱都行，找回密码靠密保问题')}
         <div class="card auth__card">
           ${tabsHtml()}
-          ${usernameField()}
+          <div class="chips" style="margin:0 0 14px;padding:0">${modeChip('username', '用用户名注册')}${modeChip('email', '用邮箱注册')}</div>
+          ${idField}
           <div class="field">
             <label class="field__label" for="fPassword">设置密码</label>
             <input class="input" id="fPassword" type="password" maxlength="32" placeholder="至少 6 位" autocomplete="new-password" />
@@ -83,21 +116,16 @@
             <label class="field__label" for="fPassword2">确认密码</label>
             <input class="input" id="fPassword2" type="password" maxlength="32" placeholder="再输入一次" autocomplete="new-password" />
           </div>
-          <div class="field">
-            <span class="field__label">密保问题（忘记密码时用）</span>
-            <div class="chips" id="fQuestions" style="margin:0 0 8px;padding:0">${chips}</div>
-            <input class="input" id="fQuestion" maxlength="60" placeholder="也可以自己写一个问题"
-                   value="${UI.escapeHtml(QUESTIONS.indexOf(pickedQuestion) >= 0 ? '' : pickedQuestion)}" />
-          </div>
-          <div class="field">
-            <label class="field__label" for="fAnswer">密保答案</label>
-            <input class="input" id="fAnswer" maxlength="40" placeholder="建议简短，例如 20230520" />
-          </div>
+          ${questionFields()}
           <button class="btn btn--primary btn--block" id="actRegister" type="button">注册并登录</button>
           <div class="auth__links">
             <button type="button" data-auth="login">已有账号，去登录</button>
           </div>
-          <div class="drop-hint">答案不区分大小写、会忽略空格和标点，请记牢</div>
+          <div class="drop-hint">${
+            signupMode === 'email'
+              ? '邮箱仅作为登录账号，不会发送验证邮件'
+              : '注册后可在「我们 → 账号安全」里绑定邮箱，之后也能用邮箱登录'
+          }</div>
         </div>
       </div>`;
   }
@@ -111,7 +139,7 @@
         <div class="card auth__card">
           ${tabsHtml()}
           <div class="chips" style="margin:0 0 14px;padding:0">${tab('answer', '回答密保问题')}${tab('code', '用恢复码')}</div>
-          ${usernameField()}
+          ${identifierField('用户名 / 邮箱')}
 
           ${
             forgotMode === 'answer'
@@ -227,7 +255,7 @@
       </div>
       <p class="record__note" style="margin-top:14px">
         忘记密码时，如果密保问题也答不上来，可以用这串恢复码重设密码。<br/>
-        建议截图保存，或存进微信收藏。之后在「我们 → 账号安全」里也能重新生成。
+        建议截图保存。之后在「我们 → 账号安全」里也能重新生成。
       </p>
       <button class="btn btn--primary btn--block" type="button" data-act="close-sheet">我已保存，开始使用</button>
     `;
@@ -247,23 +275,35 @@
   }
 
   async function onRegister(body, btn) {
-    const username = val(body, 'fUsername');
+    const username = signupMode === 'username' ? val(body, 'fUsername') : '';
+    const email = signupMode === 'email' ? val(body, 'fEmail') : '';
     const pwd = val(body, 'fPassword');
     const pwd2 = val(body, 'fPassword2');
     const custom = val(body, 'fQuestion');
     const question = custom || pickedQuestion;
     const answer = val(body, 'fAnswer');
 
-    if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) return UI.toast('用户名需 3~20 位字母、数字或下划线');
+    if (signupMode === 'username') {
+      if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) return UI.toast('用户名需 3~20 位字母、数字或下划线');
+      lastIdentifier = username;
+    } else {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return UI.toast('邮箱格式看起来不太对');
+      lastIdentifier = email;
+    }
     if (pwd.length < 6) return UI.toast('密码至少 6 位');
     if (pwd !== pwd2) return UI.toast('两次输入的密码不一样');
     if (!question) return UI.toast('请选择或填写一个密保问题');
     if (answer.length < 2) return UI.toast('密保答案至少 2 个字符');
 
-    lastUsername = username;
     busy(btn, '注册中…');
     try {
-      const res = await Cloud.api.register(username, pwd, question, answer);
+      const res = await Cloud.api.register({
+        username: username,
+        email: email,
+        password: pwd,
+        question: question,
+        answer: answer
+      });
       await Store.sync();
       UI.toast('注册成功 ❤');
       App.enterApp();
@@ -275,14 +315,14 @@
   }
 
   async function onLogin(body, btn) {
-    const username = val(body, 'fUsername');
+    const identifier = val(body, 'fIdentifier');
     const password = val(body, 'fPassword');
-    if (!username) return UI.toast('请输入用户名');
+    if (!identifier) return UI.toast('请输入用户名或邮箱');
     if (!password) return UI.toast('请输入密码');
-    lastUsername = username;
+    lastIdentifier = identifier;
     busy(btn, '登录中…');
     try {
-      await Cloud.api.login(username, password);
+      await Cloud.api.login(identifier, password);
       UI.toast('欢迎回来 ❤');
       await afterAuth();
     } catch (err) {
@@ -292,12 +332,12 @@
   }
 
   async function onAskQuestion(body, btn) {
-    const username = val(body, 'fUsername');
-    if (!username) return UI.toast('请先输入用户名');
-    lastUsername = username;
+    const identifier = val(body, 'fIdentifier');
+    if (!identifier) return UI.toast('请先输入用户名或邮箱');
+    lastIdentifier = identifier;
     busy(btn, '查询中…');
     try {
-      const res = await Cloud.api.securityQuestion(username);
+      const res = await Cloud.api.securityQuestion(identifier);
       if (!res.question) {
         idle(btn, '查看我的密保问题');
         return UI.toast('这个账号没有设置密保问题，请用恢复码找回');
@@ -314,7 +354,8 @@
         box.style.display = 'block';
       }
       idle(btn, '已找到问题');
-      body.querySelector('#fAnswer') && body.querySelector('#fAnswer').focus();
+      const ans = body.querySelector('#fAnswer');
+      if (ans) ans.focus();
     } catch (err) {
       idle(btn, '查看我的密保问题');
       UI.toast(err.message || '查询失败');
@@ -322,11 +363,11 @@
   }
 
   async function onReset(body, btn) {
-    const username = val(body, 'fUsername');
+    const identifier = val(body, 'fIdentifier');
     const password = val(body, 'fPassword');
-    if (!username) return UI.toast('请输入用户名');
+    if (!identifier) return UI.toast('请输入用户名或邮箱');
     if (password.length < 6) return UI.toast('新密码至少 6 位');
-    lastUsername = username;
+    lastIdentifier = identifier;
     busy(btn, '提交中…');
 
     try {
@@ -336,14 +377,14 @@
           idle(btn, '重设密码并登录');
           return UI.toast('请输入密保答案');
         }
-        await Cloud.api.resetByAnswer(username, answer, password);
+        await Cloud.api.resetByAnswer(identifier, answer, password);
       } else {
         const code = val(body, 'fRecovery');
         if (!code) {
           idle(btn, '重设密码并登录');
           return UI.toast('请输入恢复码');
         }
-        await Cloud.api.resetByCode(username, code, password);
+        await Cloud.api.resetByCode(identifier, code, password);
       }
       UI.toast('密码已重设 ❤');
       await afterAuth();
@@ -385,24 +426,34 @@
     }
   }
 
-  function keepUsername(body) {
-    const v = val(body, 'fUsername');
-    if (v) lastUsername = v;
+  function rememberIdentifier(body) {
+    const v = val(body, 'fIdentifier');
+    if (v) lastIdentifier = v;
+    else {
+      const u = val(body, 'fUsername') || val(body, 'fEmail');
+      if (u) lastIdentifier = u;
+    }
   }
 
   function bind(body) {
     body.onclick = (e) => {
       const authTab = e.target.closest('[data-auth]');
       if (authTab) {
-        keepUsername(body);
+        rememberIdentifier(body);
         authMode = authTab.dataset.auth;
         askedQuestion = '';
         return AuthView.show();
       }
 
+      const signupTab = e.target.closest('[data-signup]');
+      if (signupTab) {
+        signupMode = signupTab.dataset.signup;
+        return AuthView.show();
+      }
+
       const forgotTab = e.target.closest('[data-forgot]');
       if (forgotTab) {
-        keepUsername(body);
+        rememberIdentifier(body);
         forgotMode = forgotTab.dataset.forgot;
         askedQuestion = '';
         return AuthView.show();
@@ -436,7 +487,9 @@
     body.onkeydown = (e) => {
       if (e.key !== 'Enter') return;
       const id = e.target.id;
-      if (id === 'fUsername' && authMode === 'login') return onLogin(body, body.querySelector('#actLogin'));
+      if (id === 'fIdentifier' && authMode === 'login') {
+        return onLogin(body, body.querySelector('#actLogin'));
+      }
       if (id === 'fPassword') {
         if (authMode === 'login') return onLogin(body, body.querySelector('#actLogin'));
         if (authMode === 'forgot') return onReset(body, body.querySelector('#actReset'));

@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "我们的小日子 · 恋爱记录",
-  "short_name": "小日子",
-  "description": "一个只属于你们两个人的恋爱记录本：写记录、传照片、数着日子过日子。",
+  "name": "朝暮 · 恋爱记录",
+  "short_name": "朝暮",
+  "description": "记录我们的朝朝暮暮：写记录、传照片、数着日子过日子。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

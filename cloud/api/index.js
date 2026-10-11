@@ -135,6 +135,15 @@ function checkUsername(u) {
   return name;
 }
 
+/* 邮箱：可空；填了就要合法（仅作账号标识，不发验证邮件） */
+function checkEmail(e) {
+  const v = String(e || '').trim().toLowerCase();
+  if (!v) return '';
+  if (v.length > 60) fail('邮箱太长了', 'LONG_EMAIL');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) fail('邮箱格式看起来不太对', 'BAD_EMAIL');
+  return v;
+}
+
 function checkPassword(p) {
   const v = String(p || '');
   if (v.length < 6) fail('密码至少 6 位', 'WEAK_PASSWORD');
@@ -176,6 +185,7 @@ function publicUser(u) {
   return {
     uid: u._id,
     username: u.username,
+    email: u.email || '',
     nickname: u.nickname || '',
     avatar: u.avatar || null,
     bookId: u.bookId || null,
@@ -224,6 +234,20 @@ function findUserByName(db, username) {
   return db.users.filter((x) => x.username === name)[0] || null;
 }
 
+function findUserByEmail(db, email) {
+  const v = String(email || '').trim().toLowerCase();
+  if (!v) return null;
+  return db.users.filter((x) => (x.email || '') === v)[0] || null;
+}
+
+/* 登录标识：带 @ 按邮箱找，否则按用户名找 —— 一个输入框两种账号都能登 */
+function findUserByIdentifier(db, idf) {
+  const v = String(idf || '').trim().toLowerCase();
+  if (!v) return null;
+  if (v.indexOf('@') >= 0) return findUserByEmail(db, v);
+  return findUserByName(db, v);
+}
+
 function userByToken(db, uid, token) {
   if (!uid || !token) fail('请先登录', 'NO_AUTH');
   const u = db.users.filter((x) => x._id === uid)[0];
@@ -265,15 +289,36 @@ const handlers = {
     };
   },
 
-  /* 注册：用户名 + 密码 + 密保问题 */
+  /* 注册：用户名 或 邮箱 + 密码 + 密保问题 */
   async register(payload) {
     const db = await loadDB();
-    const username = checkUsername(payload.username);
     const password = checkPassword(payload.password);
     const question = checkQuestion(payload.question);
     const answer = checkAnswer(payload.answer);
+    const email = checkEmail(payload.email);
 
-    if (findUserByName(db, username)) fail('这个用户名已经被用了，换一个吧', 'USERNAME_TAKEN');
+    // 用户名：填了就用，没填（邮箱注册）就自动生成一个
+    let username = payload.username ? normUsername(payload.username) : '';
+    if (username) {
+      checkUsername(username);
+      if (findUserByName(db, username)) fail('这个用户名已经被用了，换一个吧', 'USERNAME_TAKEN');
+    } else {
+      if (!email) fail('请填写用户名或邮箱', 'NO_IDENTITY');
+      const base = (email.split('@')[0] || 'user').replace(/[^a-z0-9_]/g, '').slice(0, 12) || 'user';
+      let candidate = base;
+      let i = 1;
+      while (candidate.length < 3 || findUserByName(db, candidate)) {
+        candidate = base + i;
+        i++;
+        if (i > 500) {
+          candidate = 'u' + rand(8);
+          break;
+        }
+      }
+      username = candidate;
+    }
+
+    if (email && findUserByEmail(db, email)) fail('这个邮箱已经注册过了，直接登录吧', 'EMAIL_TAKEN');
 
     const now = Date.now();
     const pwd = hashValue(password);
@@ -285,6 +330,7 @@ const handlers = {
     const user = {
       _id: 'u_' + now.toString(36) + rand(8),
       username: username,
+      email: email,
       nickname: payload.nickname ? String(payload.nickname).slice(0, 24) : username,
       avatar: null,
       bookId: null,
@@ -312,16 +358,16 @@ const handlers = {
     };
   },
 
-  /* 登录 */
+  /* 登录：用户名 或 邮箱 都行 */
   async login(payload) {
     const db = await loadDB();
-    const username = normUsername(payload.username);
+    const identifier = payload.identifier || payload.username || '';
     const password = String(payload.password || '');
-    if (!username) fail('请输入用户名', 'NO_USERNAME');
+    if (!String(identifier).trim()) fail('请输入用户名或邮箱', 'NO_IDENTITY');
 
-    const u = findUserByName(db, username);
+    const u = findUserByIdentifier(db, identifier);
     if (!u || !verifyValue(password, u.passwordSalt, u.passwordHash)) {
-      fail('用户名或密码不对', 'BAD_LOGIN');
+      fail('账号或密码不对', 'BAD_LOGIN');
     }
 
     const token = issueToken();
@@ -330,11 +376,28 @@ const handlers = {
     return { uid: u._id, token: token.t, user: publicUser(u) };
   },
 
+  /* 绑定 / 更换邮箱（已登录，需要密码） */
+  async updateEmail(payload) {
+    const db = await loadDB();
+    const u = userByToken(db, payload.uid, payload.token);
+    if (!verifyValue(String(payload.password || ''), u.passwordSalt, u.passwordHash)) {
+      fail('密码不正确', 'BAD_PASSWORD');
+    }
+    const email = checkEmail(payload.email);
+    if (email) {
+      const other = findUserByEmail(db, email);
+      if (other && other._id !== u._id) fail('这个邮箱已经绑给别的账号了', 'EMAIL_TAKEN');
+    }
+    u.email = email;
+    await saveDB(db);
+    return { user: publicUser(u) };
+  },
+
   /* 找回密码第一步：取密保问题 */
   async securityQuestion(payload) {
     const db = await loadDB();
-    const u = findUserByName(db, payload.username);
-    if (!u) fail('没有找到这个用户名', 'NO_USER');
+    const u = findUserByIdentifier(db, payload.identifier || payload.username);
+    if (!u) fail('没有找到这个账号', 'NO_USER');
     const lockedUntil = Number(u.answerLockUntil || 0);
     const locked = lockedUntil > Date.now();
     return {
@@ -347,10 +410,9 @@ const handlers = {
   /* 找回：回答密保问题 */
   async resetByAnswer(payload) {
     const db = await loadDB();
-    const username = normUsername(payload.username);
     const password = checkPassword(payload.password);
-    const u = findUserByName(db, username);
-    if (!u) fail('没有找到这个用户名', 'NO_USER');
+    const u = findUserByIdentifier(db, payload.identifier || payload.username);
+    if (!u) fail('没有找到这个账号', 'NO_USER');
 
     const lockedUntil = Number(u.answerLockUntil || 0);
     if (lockedUntil > Date.now()) {
@@ -384,10 +446,9 @@ const handlers = {
   /* 找回：使用恢复码 */
   async resetByCode(payload) {
     const db = await loadDB();
-    const username = normUsername(payload.username);
     const password = checkPassword(payload.password);
-    const u = findUserByName(db, username);
-    if (!u) fail('没有找到这个用户名', 'NO_USER');
+    const u = findUserByIdentifier(db, payload.identifier || payload.username);
+    if (!u) fail('没有找到这个账号', 'NO_USER');
     if (!u.recoveryHash) fail('这个账号没有设置恢复码', 'NO_RECOVERY');
 
     const code = String(payload.recoveryCode || '').trim().toUpperCase();

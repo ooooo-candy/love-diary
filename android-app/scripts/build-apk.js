@@ -66,7 +66,7 @@ run(`"${gradlew}" assembleRelease`, ANDROID_DIR);
 // 5) 拷贝产物
 const apk = path.join(ANDROID_DIR, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
 if (fs.existsSync(apk)) {
-  const out = path.join(ROOT, '小日子-v1.0.apk');
+  const out = path.join(ROOT, '朝暮-v1.0.apk');
   fs.copyFileSync(apk, out);
   const mb = (fs.statSync(out).size / 1048576).toFixed(1);
   console.log('\n✔ 打包完成：' + out + '（' + mb + ' MB）');

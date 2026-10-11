@@ -444,6 +444,7 @@
   function bookCardHtml() {
     const p = Store.getProfile();
     const me = Store.getMe() || {};
+    const account = [me.username, me.email].filter(Boolean).join(' · ');
     const joined = (p.members || []).length >= 2;
 
     return `
@@ -452,11 +453,10 @@
           <div class="event-row">
             <div class="event-row__icon">👤</div>
             <div class="event-row__main">
-              <div class="event-row__name">${UI.escapeHtml(me.nickname || me.username || '未登录')}</div>
+              <div class="event-row__name">${UI.escapeHtml(me.nickname || account || '未登录')}</div>
               <div class="event-row__date">${
-                Cloud.isOnline()
-                  ? '已同步到云端，换手机登录也能看到'
-                  : '本地演示模式，数据只存在这台设备'
+                (account ? '账号：' + UI.escapeHtml(account) + ' · ' : '') +
+                (Cloud.isOnline() ? '已同步到云端，换手机登录也能看到' : '本地演示模式，数据只存在这台设备')
               }</div>
             </div>
             <button class="btn btn--ghost btn--sm" type="button" data-act="logout" style="flex:none">退出</button>
@@ -610,7 +610,7 @@
   /* ---------------- 渲染入口 ---------------- */
 
   const TITLES = {
-    home: ['我们的小日子', '记录在一起的每一天'],
+    home: ['朝暮', '朝朝暮暮，都是你'],
     timeline: ['时光轴', '翻翻我们一起走过的日子'],
     album: ['相册', '每一个瞬间都值得收藏'],
     stats: ['我们', '关于这段感情的小数据']
@@ -1272,10 +1272,19 @@
           <div class="event-row__icon">👤</div>
           <div class="event-row__main">
             <div class="event-row__name">${UI.escapeHtml(me.username || '')}</div>
-            <div class="event-row__date">当前密保问题：${UI.escapeHtml(q)}</div>
+            <div class="event-row__date">密保问题：${UI.escapeHtml(q)}</div>
+            <div class="event-row__date">${me.email ? '邮箱：' + UI.escapeHtml(me.email) : '邮箱：未绑定'}</div>
           </div>
         </div>
       </div>
+
+      <div class="field">
+        <span class="field__label">绑定邮箱（之后可用邮箱登录）</span>
+        <input class="input" id="emEmail" type="email" maxlength="60" placeholder="you@example.com"
+               value="${UI.escapeHtml(me.email || '')}" style="margin-bottom:8px" />
+        <input class="input" id="emPassword" type="password" maxlength="32" placeholder="输入登录密码以确认" />
+      </div>
+      <button class="btn btn--ghost btn--block btn--sm" type="button" data-act="save-email">保存邮箱</button>
 
       <div class="field">
         <span class="field__label">① 修改密码</span>
@@ -1327,6 +1336,27 @@
       const btn = e.target.closest('[data-act]');
       if (!btn) return;
       const act = btn.dataset.act;
+
+      if (act === 'save-email') {
+        const email = body.querySelector('#emEmail').value.trim();
+        const password = body.querySelector('#emPassword').value;
+        if (!password) return UI.toast('请输入登录密码');
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return UI.toast('邮箱格式看起来不太对');
+        btn.disabled = true;
+        btn.textContent = '提交中…';
+        try {
+          await Cloud.api.updateEmail(password, email);
+          await Store.sync();
+          UI.closeSheet();
+          openSecurity();
+          UI.toast(email ? '邮箱已绑定 ❤' : '已解绑邮箱');
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = '保存邮箱';
+          UI.toast(err.message || '保存失败');
+        }
+        return;
+      }
 
       if (act === 'save-pwd') {
         const oldPwd = body.querySelector('#cpOld').value;
