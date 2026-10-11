@@ -1,0 +1,10 @@
+{
+  "appId": "com.oukai.lovediary",
+  "appName": "小日子",
+  "webDir": "../public",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  }
+}

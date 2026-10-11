@@ -53,5 +53,10 @@ const count = (function walk(p) {
 })(PUBLIC_DIR);
 
 console.log('✔ 已准备发布目录 public/（' + count + ' 个文件）');
-console.log('▶ 上传到 CloudBase 静态托管…');
-execSync(`tcb hosting deploy public -e ${envId}`, { stdio: 'inherit', cwd: ROOT });
+
+if (process.argv.indexOf('--no-deploy') >= 0) {
+  console.log('（--no-deploy：跳过上传）');
+} else {
+  console.log('▶ 上传到 CloudBase 静态托管…');
+  execSync(`tcb hosting deploy public -e ${envId}`, { stdio: 'inherit', cwd: ROOT });
+}

@@ -46,17 +46,25 @@ npm start        # 等价于 node server.js
 添加后：桌面出现图标、全屏打开没有地址栏、断网也能看已缓存的记录。
 App 内「我们 → 安装到手机桌面」还有分步图示。
 
-**方式二：打包成 APK 安装包（Android）**
+**方式二：安装 APK（Android 安装包，已打包好）**
 
-本机缺少 Android 打包环境（需要 JDK 17 + Android SDK），用官方在线工具最省事：
+安装包已经生成在项目根目录：**`小日子-v1.0.apk`**（3.1 MB）
 
-1. 打开 https://www.pwabuilder.com
-2. 输入线上网址 → Start
-3. 选择 **Package For Stores → Android** → 下载 APK（会同时生成签名密钥，**务必保存好**，以后升级要用同一个密钥）
-4. 手机安装这个 APK（需在系统设置里允许「未知来源」安装）
+用微信/QQ/数据线把这个文件传到手机，点开后允许「未知来源安装」即可。装好后桌面图标就是那个粉紫心形。
 
-> 想要完全去掉地址栏，把 PWABuilder 生成的 `assetlinks.json` 放到网站根目录的
-> `/.well-known/assetlinks.json`（内容发我，我帮你部署）。
+- 应用名：小日子　包名：`com.oukai.lovediary`
+- 签名密钥：`android/love-diary.keystore`（别名 `love-diary`，密码 `lovediary2026`）
+  **这个文件和密码请务必备份好**，以后升级 App 必须用同一个密钥，否则手机会提示「签名不一致」无法覆盖安装。
+
+改了网页或想重新打包时，在项目根目录执行：
+
+```bash
+npm run apk
+```
+
+> 打包依赖 JDK 17 与 Android SDK（本机已安装好：JDK 17 在
+> `C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.20.101-hotspot`，
+> SDK 在 `C:\\Users\\oukai\\Android\\Sdk`）。
 
 **关于「测试域名提示页」**：CloudBase 测试域名首次访问会有一个「确定访问」提示，
 绑定自己的已备案域名后可永久去掉（控制台 → 静态网站托管 → 自定义域名）。

@@ -3,6 +3,21 @@ cloud/api/node_modules/
 public/
 .tmp/
 .playwright-cli/
+
+# 签名密钥（私密，切勿提交）
+*.keystore
+*.jks
+
+# APK 产物
+*.apk
+android-app/node_modules/
+android-app/android/build/
+android-app/android/app/build/
+android-app/android/.gradle/
+android-app/android/local.properties
+android-app/android/capacitor-cordova-android-plugins/build/
+android-app/android/build.log
+
 .DS_Store
 Thumbs.db
 *.log

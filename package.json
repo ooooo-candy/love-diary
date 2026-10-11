@@ -7,6 +7,7 @@
     "start": "node server.js",
     "deploy:fn": "tcb fn deploy api --force",
     "publish": "node scripts/publish.js",
-    "release": "npm run deploy:fn && npm run publish"
+    "release": "npm run deploy:fn && npm run publish",
+    "apk": "node android-app/scripts/build-apk.js"
   }
 }
