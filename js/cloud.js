@@ -38,6 +38,45 @@
     });
   }
 
+  /* 云端单次请求体上限约 100KB，超过这个大小的图改走分片上传 */
+  const INLINE_LIMIT = 68 * 1024;
+  const CHUNK_BYTES = 60 * 1024; // 每片原始字节，base64 后约 80KB（云端上限约 100KB）
+  const MAX_PARALLEL = 6;
+
+  /* 大图分片上传：并发传片 → 云端合并成一张完整图片 */
+  async function uploadByChunks(blob, name) {
+    const total = Math.min(30, Math.max(1, Math.ceil(blob.size / CHUNK_BYTES)));
+    const uploadId = 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    let cursor = 0;
+
+    const worker = async () => {
+      while (cursor < total) {
+        const index = cursor;
+        cursor += 1;
+        const part = blob.slice(index * CHUNK_BYTES, Math.min(blob.size, (index + 1) * CHUNK_BYTES));
+        const base64 = await blobToDataURL(part);
+        await Cloud.call('uploadImageChunk', {
+          uploadId: uploadId,
+          index: index,
+          total: total,
+          base64: base64,
+          name: name
+        });
+      }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(MAX_PARALLEL, total) }, worker));
+
+    const done = await Cloud.call('uploadImageChunk', {
+      uploadId: uploadId,
+      total: total,
+      finalize: true,
+      name: name
+    });
+    if (!done || !done.fileId) throw new Error('图片上传失败');
+    return done.fileId;
+  }
+
   const Cloud = {
     session: loadSession(),
     get mode() {
@@ -98,24 +137,44 @@
       }
 
       if (body && body.ok) return body.data || {};
-      const err = new Error((body && body.error) || '请求失败');
-      err.apiCode = (body && body.apiCode) || 'UNKNOWN';
+
+      let message = (body && body.error) || '请求失败';
+      let apiCode = (body && body.apiCode) || 'UNKNOWN';
+      // 云端请求体超限（照片过大）时给出更直白的提示
+      if (res.status === 413 || /EXCEED_MAX_PAYLOAD_SIZE|payload size/i.test(String(message))) {
+        message = '这张照片太大了，换一张或裁剪一下再试';
+        apiCode = 'TOO_LARGE';
+      }
+      const err = new Error(message);
+      err.apiCode = apiCode;
       throw err;
     },
 
-    /* 上传图片：压缩后的 blob → base64 → 服务端写入云存储 */
+    /* 上传图片：小图一次传完，大图自动切片并发上传后由云端合并 */
     async uploadImage(file) {
       if (!online) {
         if (!global.MockCloud) throw new Error('未开启本地模式');
         return global.MockCloud.upload(file);
       }
-      const dataUrl = await blobToDataURL(file);
-      const data = await Cloud.call('uploadImage', {
-        base64: dataUrl,
-        name: (file && file.name) || 'photo.jpg'
-      });
-      if (!data || !data.fileId) throw new Error('图片上传失败');
-      return { fileId: data.fileId };
+      const name = (file && file.name) || 'photo.jpg';
+      const blob = file instanceof Blob ? file : new Blob([file]);
+
+      if (blob.size <= INLINE_LIMIT) {
+        const dataUrl = await blobToDataURL(blob);
+        const data = await Cloud.call('uploadImage', { base64: dataUrl, name: name });
+        if (!data || !data.fileId) throw new Error('图片上传失败');
+        return { fileId: data.fileId };
+      }
+
+      try {
+        return { fileId: await uploadByChunks(blob, name) };
+      } catch (err) {
+        // 云端还没升级到支持分片时，交回上层改用小图重试
+        if (/未知的操作|NO_ACTION|NOT_FOUND|EXCEED_MAX_PAYLOAD_SIZE|too large/i.test(String(err.message))) {
+          err.apiCode = 'TOO_LARGE';
+        }
+        throw err;
+      }
     },
 
     /* 换取图片临时下载地址 */

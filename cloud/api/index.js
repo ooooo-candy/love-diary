@@ -46,6 +46,20 @@ async function fileIDOf(cloudPath) {
   return fileIdPrefix + '/' + cloudPath;
 }
 
+/* 读取云存储里的一个小 JSON 文件（分片元信息用） */
+async function readFileJSON(cloudPath) {
+  try {
+    const fileID = await fileIDOf(cloudPath);
+    const res = await app.getTempFileURL({ fileList: [{ fileID: fileID, maxAge: 60 }] });
+    const url = (res.fileList || [])[0] && (res.fileList || [])[0].tempFileURL;
+    if (!url) return null;
+    const r = await fetch(url);
+    return JSON.parse(await r.text());
+  } catch (err) {
+    return null;
+  }
+}
+
 async function loadDB() {
   try {
     const fileID = await fileIDOf(DB_PATH);
@@ -896,6 +910,92 @@ const handlers = {
       if (it && it.fileID) map[it.fileID] = it.tempFileURL || '';
     });
     return { urls: map };
+  },
+
+  /* ---------- 大图分片上传 ----------
+   * HTTP 访问服务的请求体上限约 100KB，大图一次传不完。
+   * 这里把大图切成多片分别上传（可并发），最后再调一次 finalize 合并成完整文件。 */
+  async uploadImageChunk(payload) {
+    const uploadId = String(payload.uploadId || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 40);
+    const total = Number(payload.total);
+    if (!uploadId) fail('分片标识缺失', 'BAD_CHUNK');
+    if (!Number.isInteger(total) || total < 1 || total > 30) fail('分片数量不正确', 'BAD_CHUNK');
+
+    const dir = 'love-diary/tmp/' + uploadId + '/';
+    let meta = await readFileJSON(dir + 'meta.json');
+
+    if (!meta) {
+      // 第一片：校验身份并写入元信息（记下归属用户，避免他人拼接）
+      const db = await loadDB();
+      const u = userByToken(db, payload.uid, payload.token);
+      meta = {
+        uid: u._id,
+        total: total,
+        name: String(payload.name || 'photo.jpg').slice(0, 60),
+        at: Date.now()
+      };
+      await app.uploadFile({
+        cloudPath: dir + 'meta.json',
+        fileContent: Buffer.from(JSON.stringify(meta), 'utf8'),
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } else if (meta.uid !== payload.uid) {
+      fail('分片不属于当前账号', 'FORBIDDEN');
+    }
+
+    /* 合并阶段：一次性取所有分片的地址，再并行下载，尽量快 */
+    if (payload.finalize) {
+      const fileIDs = [];
+      for (let i = 0; i < meta.total; i++) fileIDs.push(await fileIDOf(dir + 'p' + i));
+
+      const res = await app.getTempFileURL({
+        fileList: fileIDs.map((id) => ({ fileID: id, maxAge: 120 }))
+      });
+      const urlMap = {};
+      (res.fileList || []).forEach((it) => {
+        if (it && it.fileID) urlMap[it.fileID] = it.tempFileURL || '';
+      });
+
+      const parts = await Promise.all(
+        fileIDs.map(async (id) => {
+          const url = urlMap[id];
+          if (!url) fail('有分片丢失，请重试', 'CHUNK_MISSING');
+          const r = await fetch(url);
+          return Buffer.from(await r.arrayBuffer());
+        })
+      );
+      const full = Buffer.concat(parts);
+      if (!full.length) fail('图片内容为空', 'EMPTY_IMAGE');
+
+      const ext =
+        (String(meta.name || 'photo.jpg').split('.').pop() || 'jpg')
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '') || 'jpg';
+      const cloudPath = 'love-diary/' + meta.uid + '/' + Date.now() + '_' + rand(8) + '.' + ext;
+      const up = await app.uploadFile({ cloudPath: cloudPath, fileContent: full });
+      if (!up || !up.fileID) fail('图片上传失败', 'UPLOAD_FAIL');
+
+      // 清理临时分片（失败也不影响结果）
+      try {
+        const list = [{ fileID: await fileIDOf(dir + 'meta.json') }];
+        for (let i = 0; i < meta.total; i++) list.push({ fileID: await fileIDOf(dir + 'p' + i) });
+        await app.deleteFile({ fileList: list });
+      } catch (err) {
+        /* 忽略 */
+      }
+      return { fileId: up.fileID, bytes: full.length };
+    }
+
+    /* 分片写入阶段 */
+    const index = Number(payload.index);
+    if (!Number.isInteger(index) || index < 0 || index >= meta.total) fail('分片序号不正确', 'BAD_CHUNK');
+    const clean = String(payload.base64 || '').split(',').pop();
+    if (!clean) fail('分片内容为空', 'NO_FILE');
+    const buf = Buffer.from(clean, 'base64');
+    if (buf.length > 90 * 1024) fail('单个分片过大', 'CHUNK_TOO_LARGE');
+    await app.uploadFile({ cloudPath: dir + 'p' + index, fileContent: buf });
+
+    return { done: false, index: index, total: meta.total };
   }
 };
 

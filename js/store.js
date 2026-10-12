@@ -74,26 +74,48 @@
     });
   }
 
-  async function compress(file) {
+  /* 大图会自动分片上传，所以这里只需控制单张照片的整体体积；
+   * 超过这个大小就继续压缩，避免上传过慢、占用云存储。 */
+  const UPLOAD_BYTES = 900 * 1024;
+
+  /* 自适应压缩：优先保证画质，只在超过体积上限时才逐级压缩
+   * aggressive=true 时用很小的目标，作为分片上传不可用时的兜底 */
+  async function compress(file, aggressive) {
+    const target = aggressive ? 34 * 1024 : UPLOAD_BYTES;
     const { img, url } = await loadImageFromFile(file);
-    const maxEdge = 1600;
-    const sw = img.naturalWidth || img.width;
-    const sh = img.naturalHeight || img.height;
-    const scale = Math.min(1, maxEdge / Math.max(sw, sh));
-    const w = Math.max(1, Math.round(sw * scale));
-    const h = Math.max(1, Math.round(sh * scale));
+    try {
+      const sw = img.naturalWidth || img.width;
+      const sh = img.naturalHeight || img.height;
+      if (!sw || !sh) throw new Error('无法读取该图片：' + (file.name || ''));
 
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, w, h);
-    ctx.drawImage(img, 0, 0, w, h);
-    URL.revokeObjectURL(url);
+      let maxEdge = aggressive ? 900 : 1600;
+      let quality = aggressive ? 0.62 : 0.86;
+      let best = null;
 
-    const blob = await canvasToBlob(canvas, 'image/jpeg', 0.85);
-    return { blob: blob, w: w, h: h };
+      // 最多迭代 8 次：太大就同时缩小尺寸 + 降质量，直到进入限制内
+      for (let i = 0; i < 8; i++) {
+        const scale = Math.min(1, maxEdge / Math.max(sw, sh));
+        const w = Math.max(1, Math.round(sw * scale));
+        const h = Math.max(1, Math.round(sh * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        const blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+        if (!best || blob.size < best.blob.size) best = { blob: blob, w: w, h: h };
+        if (blob.size <= target) return { blob: blob, w: w, h: h };
+
+        const over = Math.sqrt(blob.size / target);
+        maxEdge = Math.max(520, Math.round(maxEdge / Math.min(1.6, Math.max(1.08, over))));
+        quality = Math.max(0.4, quality - 0.09);
+      }
+      return best;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
   }
 
   function blobToFile(blob, name) {
@@ -245,15 +267,26 @@
       const refs = [];
       for (const file of list) {
         try {
-          const { blob, w, h } = await compress(file);
-          const localUrl = URL.createObjectURL(blob);
-          const ref = { id: '', localUrl: localUrl, w: w, h: h, name: file.name || 'photo', uploading: true };
-          refs.push(ref);
-          previewCache.set(localUrl, localUrl);
+          let { blob, w, h } = await compress(file);
+          let up = null;
+          try {
+            up = await Cloud.uploadImage(blobToFile(blob, (file.name || 'photo') + '.jpg'));
+          } catch (err) {
+            // 万一还是超出云端上限（或网络抖动），再压一轮更小的兜底重试
+            if (err.apiCode === 'TOO_LARGE' || err.apiCode === 'NETWORK') {
+              const small = await compress(file, true);
+              blob = small.blob;
+              w = small.w;
+              h = small.h;
+              up = await Cloud.uploadImage(blobToFile(blob, (file.name || 'photo') + '.jpg'));
+            } else {
+              throw err;
+            }
+          }
 
-          const up = await Cloud.uploadImage(blobToFile(blob, (file.name || 'photo') + '.jpg'));
-          ref.id = up.fileId;
-          ref.uploading = false;
+          const localUrl = URL.createObjectURL(blob);
+          const ref = { id: up.fileId, localUrl: localUrl, w: w, h: h, name: file.name || 'photo' };
+          refs.push(ref);
           previewCache.set(String(ref.id), localUrl);
         } catch (err) {
           UI.toast(err.message || '有图片没能加进来');
