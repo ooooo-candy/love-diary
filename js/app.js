@@ -1225,9 +1225,9 @@
         )}" />
       </div>
       <div class="field" id="evLunarField" hidden>
-        <span class="field__label">农历日期</span>
+        <span class="field__label">农历日期（年 / 月 / 日）</span>
         <div class="row">
-          <select class="input" id="evLunarYear" hidden>${lunarYears}</select>
+          <select class="input" id="evLunarYear">${lunarYears}</select>
           <select class="input" id="evLunarMonth">${lunarMonths}</select>
           <select class="input" id="evLunarDay">${lunarDays}</select>
         </div>
@@ -1304,6 +1304,7 @@
         return;
       }
       const days = UI.daysBetween(new Date(), new Date(nx.y, nx.m - 1, nx.d));
+      const thisYear = new Date().getFullYear();
       el.textContent =
         '农历' +
         Lunar.format(lm, ld, false) +
@@ -1314,13 +1315,14 @@
         ' 月 ' +
         nx.d +
         ' 日' +
-        (days > 0 ? '（还有 ' + days + ' 天）' : days === 0 ? '（就是今天）' : '');
+        (days > 0 ? '（还有 ' + days + ' 天）' : days === 0 ? '（就是今天）' : '') +
+        (yearly && ly !== thisYear ? '；年份仅作记录，每年都按这个农历日提醒' : '');
     }
 
-    /* 只有「农历 + 仅一次」才需要选年份 */
+    /* 年份始终显示：生日时作记录用，「仅一次」时决定具体日期 */
     function syncLunarYear() {
       const sel = $('#evLunarYear');
-      if (sel) sel.hidden = !(calendar === 'lunar' && !yearly);
+      if (sel) sel.hidden = false;
     }
 
     function applyCalendar() {
