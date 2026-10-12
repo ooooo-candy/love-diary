@@ -101,15 +101,18 @@
     if (!ev) return null;
 
     if (ev.calendar === 'lunar' && ev.lunarMonth) {
+      const label = '农历 ' + Lunar.format(ev.lunarMonth, ev.lunarDay, ev.lunarIsLeap);
+
+      // 农历「仅一次」：按指定农历年份算具体公历日期
+      if (!ev.yearly && ev.lunarYear) {
+        const s = Lunar.solarOfLunarYear(ev.lunarYear, ev.lunarMonth, ev.lunarDay, ev.lunarIsLeap);
+        if (!s) return null;
+        return { y: s.y, m: s.m, d: s.d, lunar: true, label: label, fixed: true };
+      }
+
       const nx = Lunar.nextOccurrence(ev.lunarMonth, ev.lunarDay, ev.lunarIsLeap, base);
       if (!nx) return null;
-      return {
-        y: nx.y,
-        m: nx.m,
-        d: nx.d,
-        lunar: true,
-        label: '农历 ' + Lunar.format(ev.lunarMonth, ev.lunarDay, ev.lunarIsLeap)
-      };
+      return { y: nx.y, m: nx.m, d: nx.d, lunar: true, label: label };
     }
 
     if (!ev.date) return null;
@@ -150,10 +153,8 @@
       const nx = eventNextDate(ev, today);
       if (!nx) return;
       const dateStr = nx.y + '-' + UI.pad2(nx.m) + '-' + UI.pad2(nx.d);
-      // 公历「仅一次」的日子如果已经过去，就不用再倒计时了
-      if (!ev.yearly && ev.calendar !== 'lunar' && nx.y === today.getFullYear()) {
-        if (UI.daysBetween(today, UI.parseDate(dateStr)) < 0) return;
-      }
+      // 「仅一次」的日子如果已经过去，就不再倒计时
+      if (!ev.yearly && UI.daysBetween(today, UI.parseDate(dateStr)) < 0) return;
       events.push({
         id: ev.id,
         name: ev.name,
@@ -1123,9 +1124,10 @@
                 ? '就是今天'
                 : `还有 ${diff} 天`;
             const dateLabel = isLunar
-              ? `农历 ${Lunar.format(ev.lunarMonth, ev.lunarDay, ev.lunarIsLeap)} · 每年`
+              ? `农历 ${Lunar.format(ev.lunarMonth, ev.lunarDay, ev.lunarIsLeap)}` +
+                (ev.yearly ? ' · 每年' : ev.lunarYear ? ` · ${ev.lunarYear} 年` : '')
               : UI.formatDateShort(ev.date) + (ev.yearly ? ' · 每年' : '');
-            const sub = isLunar && nx ? `今年 ${nx.m} 月 ${nx.d} 日` : '';
+            const sub = isLunar && nx ? `公历 ${nx.m} 月 ${nx.d} 日` : '';
             return `<div class="event-row">
               <div class="event-row__icon">${UI.escapeHtml(ev.icon || (isLunar ? '🎂' : '📅'))}</div>
               <div class="event-row__main">
@@ -1183,6 +1185,17 @@
     const lunarDays = Array.from({ length: 30 }, (_, i) =>
       `<option value="${i + 1}">${Lunar.dayName(i + 1)}</option>`
     ).join('');
+    // 农历年份（仅「仅一次」时需要），按年代分组方便手机选择
+    const lunarYears = (function () {
+      let html = '';
+      for (let start = 1930; start <= 2100; start += 10) {
+        const end = Math.min(2100, start + 9);
+        html += '<optgroup label="' + start + ' - ' + end + '">';
+        for (let y = start; y <= end; y++) html += `<option value="${y}">${y} 年</option>`;
+        html += '</optgroup>';
+      }
+      return html;
+    })();
 
     let icon = (ev && ev.icon) || icons[0];
     let yearly = ev ? Boolean(ev.yearly) : true;
@@ -1214,6 +1227,7 @@
       <div class="field" id="evLunarField" hidden>
         <span class="field__label">农历日期</span>
         <div class="row">
+          <select class="input" id="evLunarYear" hidden>${lunarYears}</select>
           <select class="input" id="evLunarMonth">${lunarMonths}</select>
           <select class="input" id="evLunarDay">${lunarDays}</select>
         </div>
@@ -1245,7 +1259,10 @@
     const body = UI.openSheet(html);
     const $ = (sel) => body.querySelector(sel);
 
-    // 编辑农历事件时，把原来的月/日填回下拉
+    // 年份下拉默认当前年（编辑时沿用原来的年份）
+    $('#evLunarYear').value = String((ev && ev.lunarYear) || new Date().getFullYear());
+
+    // 编辑时把原来的农历月/日填回下拉
     if (calendar === 'lunar') {
       $('#evLunarMonth').value = String((ev && ev.lunarMonth) || 8);
       $('#evLunarDay').value = String((ev && ev.lunarDay) || 15);
@@ -1256,6 +1273,31 @@
       if (!el) return;
       const lm = Number($('#evLunarMonth').value);
       const ld = Number($('#evLunarDay').value);
+      const ly = Number($('#evLunarYear').value) || new Date().getFullYear();
+
+      // 仅一次：按选定的农历年份算具体公历日期
+      if (!yearly) {
+        const s = Lunar.solarOfLunarYear(ly, lm, ld, false);
+        if (!s) {
+          el.textContent = '这个农历日期不存在，换一个试试';
+          return;
+        }
+        const days = UI.daysBetween(new Date(), new Date(s.y, s.m - 1, s.d));
+        el.textContent =
+          ly +
+          ' 年农历' +
+          Lunar.format(lm, ld, false) +
+          ' → 公历 ' +
+          s.y +
+          ' 年 ' +
+          s.m +
+          ' 月 ' +
+          s.d +
+          ' 日' +
+          (days > 0 ? '（还有 ' + days + ' 天）' : days === 0 ? '（就是今天）' : '（已过去）');
+        return;
+      }
+
       const nx = Lunar.nextOccurrence(lm, ld, false, new Date());
       if (!nx) {
         el.textContent = '这个日期暂时算不出来，换一个试试';
@@ -1275,22 +1317,30 @@
         (days > 0 ? '（还有 ' + days + ' 天）' : days === 0 ? '（就是今天）' : '');
     }
 
+    /* 只有「农历 + 仅一次」才需要选年份 */
+    function syncLunarYear() {
+      const sel = $('#evLunarYear');
+      if (sel) sel.hidden = !(calendar === 'lunar' && !yearly);
+    }
+
     function applyCalendar() {
       const isLunar = calendar === 'lunar';
       $('#evSolarField').hidden = isLunar;
       $('#evLunarField').hidden = !isLunar;
-      $('#evTypeField').hidden = isLunar; // 农历生日本来就是每年一次
-      if (isLunar) {
-        yearly = true;
-        UI.$$('#evType .chip').forEach((b, i) => b.classList.toggle('is-on', i === 0));
-        updateLunarHint();
-      }
+      syncLunarYear();
+      updateLunarHint();
     }
 
     applyCalendar();
 
     body.addEventListener('change', (e) => {
-      if (e.target.closest('#evLunarMonth') || e.target.closest('#evLunarDay')) updateLunarHint();
+      if (
+        e.target.closest('#evLunarYear') ||
+        e.target.closest('#evLunarMonth') ||
+        e.target.closest('#evLunarDay')
+      ) {
+        updateLunarHint();
+      }
     });
 
     body.addEventListener('click', (e) => {
@@ -1311,6 +1361,8 @@
       if (ty) {
         yearly = ty.dataset.yearly === '1';
         UI.$$('#evType .chip').forEach((b) => b.classList.toggle('is-on', b === ty));
+        syncLunarYear();
+        updateLunarHint();
         return;
       }
 
@@ -1333,14 +1385,25 @@
       if (calendar === 'lunar') {
         const lm = Number($('#evLunarMonth').value);
         const ld = Number($('#evLunarDay').value);
-        const nx = Lunar.nextOccurrence(lm, ld, false, new Date());
+        const ly = Number($('#evLunarYear').value) || new Date().getFullYear();
+        let dateStr = UI.todayStr();
+
+        if (yearly) {
+          const nx = Lunar.nextOccurrence(lm, ld, false, new Date());
+          if (nx) dateStr = nx.y + '-' + UI.pad2(nx.m) + '-' + UI.pad2(nx.d);
+        } else {
+          const s = Lunar.solarOfLunarYear(ly, lm, ld, false);
+          if (s) dateStr = s.y + '-' + UI.pad2(s.m) + '-' + UI.pad2(s.d);
+        }
+
         Object.assign(nextEvent, {
           calendar: 'lunar',
+          lunarYear: ly,
           lunarMonth: lm,
           lunarDay: ld,
           lunarIsLeap: false,
-          yearly: true,
-          date: nx ? nx.y + '-' + UI.pad2(nx.m) + '-' + UI.pad2(nx.d) : UI.todayStr()
+          yearly: yearly,
+          date: dateStr
         });
       } else {
         const date = $('#evDate').value;
