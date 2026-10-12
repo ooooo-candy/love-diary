@@ -688,103 +688,6 @@
 
   /* ---------------- 撰写记录 ---------------- */
 
-  /* 坐标 → 中文地名（两个免费服务依次尝试，都失败返回空串） */
-  async function reverseGeocode(lat, lng) {
-    const tryFetch = async (url) => {
-      try {
-        const ctl = new AbortController();
-        const timer = setTimeout(() => ctl.abort(), 8000);
-        const r = await fetch(url, { signal: ctl.signal });
-        clearTimeout(timer);
-        if (!r.ok) return null;
-        return await r.json();
-      } catch (err) {
-        return null;
-      }
-    };
-
-    // 1) BigDataCloud 免费客户端接口（无需 key）
-    const bdc = await tryFetch(
-      'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' +
-        lat +
-        '&longitude=' +
-        lng +
-        '&localityLanguage=zh'
-    );
-    if (bdc) {
-      const city = bdc.principalSubdivision || bdc.city || '';
-      const d = bdc.locality || '';
-      let name = '';
-      if (city && d && d.indexOf(city) < 0 && city.indexOf(d) < 0) {
-        name = city + d;
-      } else {
-        name = d || city;
-      }
-      if (name) return name;
-    }
-
-    // 2) OpenStreetMap Nominatim
-    const osm = await tryFetch(
-      'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' +
-        lat +
-        '&lon=' +
-        lng +
-        '&zoom=16&accept-language=zh-CN'
-    );
-    if (osm && osm.address) {
-      const a = osm.address;
-      const parts = [a.city || a.town || a.county, a.suburb || a.city_district, a.road, a.house_number].filter(
-        Boolean
-      );
-      if (parts.length) return parts.join('');
-    }
-
-    return '';
-  }
-
-  /* 一键定位：拿 GPS 坐标 → 换成地名 → 填进地点栏 */
-  function bindLocate(body) {
-    const locateBtn = body.querySelector('#btnLocate');
-    if (!locateBtn || locateBtn.dataset.bound) return;
-    locateBtn.dataset.bound = '1';
-
-    locateBtn.addEventListener('click', () => {
-      if (!navigator.geolocation) {
-        UI.toast('这台设备不支持定位');
-        return;
-      }
-      locateBtn.disabled = true;
-      locateBtn.textContent = '定位中…';
-      const done = () => {
-        locateBtn.disabled = false;
-        locateBtn.textContent = '📍 定位';
-      };
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          const name = await reverseGeocode(lat, lng);
-          const input = body.querySelector('#fPlace');
-          if (input) input.value = name || '北纬' + lat.toFixed(3) + ' 东经' + lng.toFixed(3);
-          done();
-          UI.toast(name ? '已定位：' + name : '已获取坐标');
-        },
-        (err) => {
-          done();
-          const code = err && err.code;
-          UI.toast(
-            code === 1
-              ? '你没有允许定位，需要在浏览器设置里打开'
-              : code === 2
-              ? '暂时获取不到位置'
-              : '定位超时了，稍后再试'
-          );
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
-      );
-    });
-  }
-
   function composeHtml(draft) {
     const moods = MOODS.map(
       (m) =>
@@ -811,12 +714,8 @@
         </div>
         <div class="field">
           <label class="field__label" for="fPlace">地点（选填）</label>
-          <div class="row" style="gap:8px;align-items:center">
-            <input class="input" id="fPlace" type="text" placeholder="比如：那家小面馆"
-                   value="${UI.escapeHtml(draft.place || '')}" style="flex:1;min-width:0" />
-            <button class="btn btn--ghost btn--sm" type="button" id="btnLocate"
-                    style="flex:none;white-space:nowrap">📍 定位</button>
-          </div>
+          <input class="input" id="fPlace" type="text" placeholder="比如：那家小面馆"
+                 value="${UI.escapeHtml(draft.place || '')}" />
         </div>
       </div>
 
@@ -903,7 +802,6 @@
       onClose: () => { state.drafting = null; }
     });
     renderThumbs();
-    bindLocate(body);
 
     const fileInput = body.querySelector('#fFile');
 
