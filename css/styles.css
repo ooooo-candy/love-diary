@@ -688,6 +688,18 @@ img { display: block; max-width: 100%; }
   padding: 0 30px;
 }
 
+/* 灯箱滑动切换的方向感动画 */
+.lb-from-right { animation: lbFromRight .28s ease; }
+.lb-from-left { animation: lbFromLeft .28s ease; }
+@keyframes lbFromRight {
+  from { transform: translateX(48px); opacity: .25; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes lbFromLeft {
+  from { transform: translateX(-48px); opacity: .25; }
+  to { transform: none; opacity: 1; }
+}
+
 /* ---------- Toast ---------- */
 .toasts {
   position: fixed;

@@ -1444,13 +1444,19 @@
 
   const LB = { list: [], idx: 0, caption: '' };
 
-  async function showLightbox() {
+  async function showLightbox(dir) {
     const item = LB.list[LB.idx];
     if (!item) return;
     const url = await Store.getImageURL(item.ref);
     const lb = document.getElementById('lightbox');
     const img = document.getElementById('lbImg');
     img.src = url || '';
+    if (dir) {
+      // 带方向感的滑入动画：下一张从右进，上一张从左进
+      img.classList.remove('lb-from-right', 'lb-from-left');
+      void img.offsetWidth;
+      img.classList.add(dir > 0 ? 'lb-from-right' : 'lb-from-left');
+    }
     document.getElementById('lbCaption').textContent =
       (item.date ? UI.formatDate(item.date) + ' · ' : '') +
       (LB.list.length > 1 ? `${LB.idx + 1} / ${LB.list.length}` : '');
@@ -1466,12 +1472,66 @@
   function stepLightbox(delta) {
     if (LB.list.length < 2) return;
     LB.idx = (LB.idx + delta + LB.list.length) % LB.list.length;
-    showLightbox();
+    showLightbox(delta);
   }
 
   function closeLightbox() {
     document.getElementById('lightbox').hidden = true;
     document.getElementById('lbImg').removeAttribute('src');
+  }
+
+  /* 照片滑动浏览：手机左右滑、桌面按住拖拽，都能切换上一张/下一张 */
+  function bindLightboxGestures() {
+    const lb = document.getElementById('lightbox');
+    if (!lb || lb.dataset.gestures) return;
+    lb.dataset.gestures = '1';
+
+    let startX = 0;
+    let startY = 0;
+    let tracking = false;
+
+    lb.addEventListener(
+      'touchstart',
+      (e) => {
+        if (!e.touches || !e.touches.length) return;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        tracking = true;
+      },
+      { passive: true }
+    );
+
+    lb.addEventListener(
+      'touchend',
+      (e) => {
+        if (!tracking) return;
+        tracking = false;
+        const t = (e.changedTouches && e.changedTouches[0]) || null;
+        if (!t) return;
+        const dx = t.clientX - startX;
+        const dy = t.clientY - startY;
+        // 横向滑超过 50px、且明显比纵向大，才算一次切换
+        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+          stepLightbox(dx < 0 ? 1 : -1);
+        }
+      },
+      { passive: true }
+    );
+
+    // 桌面端按住拖拽
+    let mouseDown = false;
+    let mouseStartX = 0;
+    lb.addEventListener('mousedown', (e) => {
+      mouseDown = true;
+      mouseStartX = e.clientX;
+    });
+    window.addEventListener('mouseup', (e) => {
+      if (!mouseDown) return;
+      mouseDown = false;
+      if (lb.hidden) return;
+      const dx = e.clientX - mouseStartX;
+      if (Math.abs(dx) > 80) stepLightbox(dx < 0 ? 1 : -1);
+    });
   }
 
   function recordShots(rec) {
@@ -2020,6 +2080,9 @@
         handlePasteFiles(files);
       }
     });
+
+    // 照片滑动浏览手势
+    bindLightboxGestures();
 
     // 主区域交互
     document.getElementById('main').addEventListener('click', onMainClick);
