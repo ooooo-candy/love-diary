@@ -9,8 +9,5 @@
     "publish": "node scripts/publish.js",
     "release": "npm run deploy:fn && npm run publish",
     "apk": "node android-app/scripts/build-apk.js"
-  },
-  "dependencies": {
-    "lunar-javascript": "^1.7.7"
   }
 }
