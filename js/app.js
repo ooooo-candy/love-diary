@@ -785,6 +785,45 @@
     });
   }
 
+  /* 搜地点前先拿一个粗略位置：GPS（授权过就精准）-> IP 定位（免授权，城市级） */
+  function roughLocation() {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (v) => {
+        if (!done) {
+          done = true;
+          resolve(v);
+        }
+      };
+      try {
+        navigator.geolocation.getCurrentPosition(
+          (p) => finish({ lat: p.coords.latitude, lng: p.coords.longitude }),
+          () => finish(null),
+          { timeout: 3000, maximumAge: 300000 }
+        );
+        setTimeout(() => finish(null), 3600);
+      } catch (err) {
+        finish(null);
+      }
+    }).then(async (gps) => {
+      if (gps) return gps;
+      try {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 6000);
+        const r = await fetch(
+          'https://api.bigdatacloud.net/data/reverse-geocode-client?localityLanguage=zh',
+          { signal: ctl.signal }
+        );
+        clearTimeout(timer);
+        const d = await r.json();
+        if (d && d.latitude && d.longitude) return { lat: d.latitude, lng: d.longitude };
+      } catch (err) {
+        /* 忽略 */
+      }
+      return null;
+    });
+  }
+
   /* 地点搜索：输入关键词 -> 云端调腾讯位置服务 -> 点选填入地点栏 */
   function bindPlaceSearch(body) {
     const btn = body.querySelector('#btnSearchPlace');
@@ -825,7 +864,8 @@
       }
       listEl.innerHTML = '<div class="empty__desc" style="padding:10px 12px">搜索中…</div>';
       try {
-        const d = await Cloud.api.searchPlace(kw);
+        const loc = await roughLocation();
+        const d = await Cloud.api.searchPlace(kw, loc ? loc.lat : 0, loc ? loc.lng : 0);
         renderList(d.list || []);
       } catch (err) {
         listEl.innerHTML =
