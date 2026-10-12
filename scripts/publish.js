@@ -45,6 +45,16 @@ fs.mkdirSync(PUBLIC_DIR, { recursive: true });
 FILES.forEach((f) => fs.copyFileSync(path.join(ROOT, f), path.join(PUBLIC_DIR, f)));
 DIRS.forEach((d) => copyDir(path.join(ROOT, d), path.join(PUBLIC_DIR, d)));
 
+/* 打包好的 APK 一并发布，手机点链接即可下载安装 */
+const apkSrc = fs
+  .readdirSync(ROOT)
+  .filter((f) => /\.apk$/i.test(f))
+  .map((f) => path.join(ROOT, f))[0];
+if (apkSrc) {
+  fs.copyFileSync(apkSrc, path.join(PUBLIC_DIR, 'chaomu.apk'));
+  console.log('✔ 已带上安装包 ' + path.basename(apkSrc) + ' → chaomu.apk');
+}
+
 const count = (function walk(p) {
   return fs.readdirSync(p, { withFileTypes: true }).reduce(
     (n, it) => n + (it.isDirectory() ? walk(path.join(p, it.name)) : 1),
