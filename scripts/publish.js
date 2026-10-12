@@ -64,6 +64,23 @@ const count = (function walk(p) {
 
 console.log('✔ 已准备发布目录 public/（' + count + ' 个文件）');
 
+/* 写入版本号，App 设置页里能显示，方便确认是否已经是最新版 */
+const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16);
+fs.writeFileSync(
+  path.join(PUBLIC_DIR, 'version.js'),
+  'window.APP_VERSION = ' + JSON.stringify(stamp) + ';\n',
+  'utf8'
+);
+
+/* 给 index.html 里的 js/css 带上版本参数：
+ * 这样发布新版本后资源地址就变了，不会被浏览器/离线缓存里的旧文件挡住 */
+const htmlSrc = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+const rev = Date.now().toString(36);
+const htmlOut = htmlSrc.replace(/(src|href)="((?:js|css)\/[^"?]+)"/g, (m, attr, p) => {
+  return attr + '="' + p + '?v=' + rev + '"';
+});
+fs.writeFileSync(path.join(PUBLIC_DIR, 'index.html'), htmlOut, 'utf8');
+
 if (process.argv.indexOf('--no-deploy') >= 0) {
   console.log('（--no-deploy：跳过上传）');
 } else {

@@ -586,7 +586,9 @@
           <div class="setting-row">
             <div class="setting-row__main">
               <div class="setting-row__label">检查更新</div>
-              <div class="setting-row__hint">App 会自动更新；若发现还是旧界面，点这里强制刷新</div>
+              <div class="setting-row__hint">当前版本 ${UI.escapeHtml(
+                window.APP_VERSION || 'dev'
+              )}；更新会自动生效，若还是旧界面点这里强制刷新</div>
             </div>
             <button class="btn btn--ghost btn--sm" type="button" data-act="force-update">刷新</button>
           </div>
@@ -1113,6 +1115,7 @@
                 <div class="event-row__date">${dateLabel}${sub ? ' · ' + sub : ''}</div>
               </div>
               <div class="event-row__count">${txt}</div>
+              <button class="mini-btn" type="button" data-act="edit-event" data-id="${UI.escapeHtml(ev.id)}">✏️</button>
               <button class="mini-btn" type="button" data-act="del-event" data-id="${UI.escapeHtml(ev.id)}">🗑</button>
             </div>`;
           })
@@ -1124,22 +1127,71 @@
         <span>重要日子</span>
         <button class="mini-btn" type="button" data-act="close-sheet">✕</button>
       </div>
-      <div class="card" style="margin-bottom:16px">${rows}</div>
+      <div class="card" style="margin-bottom:14px">${rows}</div>
+      <button class="btn btn--primary btn--block" type="button" data-act="add-event">＋ 添加重要日子</button>
+      <div class="drop-hint" style="margin-top:12px">生日可以选农历（阴历），到时候会自动换算成当年的公历日期</div>
+    `;
 
+    const body = UI.openSheet(html);
+
+    body.addEventListener('click', (e) => {
+      const del = e.target.closest('[data-act="del-event"]');
+      if (del) {
+        const id = del.dataset.id;
+        const next = (Store.getProfile().events || []).filter((x) => x.id !== id);
+        Store.saveProfile({ events: next }).then(() => {
+          openEvents();
+          render();
+        });
+        return;
+      }
+      const edit = e.target.closest('[data-act="edit-event"]');
+      if (edit) {
+        const ev = (Store.getProfile().events || []).filter((x) => x.id === edit.dataset.id)[0];
+        if (ev) openEventForm(ev);
+        return;
+      }
+      if (e.target.closest('[data-act="add-event"]')) openEventForm(null);
+    });
+  }
+
+  /* 新增 / 编辑一个重要日子（ev 传 null 表示新增） */
+  function openEventForm(ev) {
+    const editing = Boolean(ev);
+    const icons = ['🎂', '💍', '✈️', '🎁', '🍰', '💌', '🎬', '🌙'];
+    const lunarMonths = Array.from({ length: 12 }, (_, i) =>
+      `<option value="${i + 1}">${Lunar.monthName(i + 1, false)}</option>`
+    ).join('');
+    const lunarDays = Array.from({ length: 30 }, (_, i) =>
+      `<option value="${i + 1}">${Lunar.dayName(i + 1)}</option>`
+    ).join('');
+
+    let icon = (ev && ev.icon) || icons[0];
+    let yearly = ev ? Boolean(ev.yearly) : true;
+    let calendar = ev && ev.calendar === 'lunar' ? 'lunar' : 'solar';
+
+    const html = `
+      <div class="sheet__title">
+        <span>${editing ? '编辑重要日子' : '添加重要日子'}</span>
+        <button class="mini-btn" type="button" data-act="close-sheet">✕</button>
+      </div>
       <div class="field">
         <label class="field__label" for="evName">名称</label>
-        <input class="input" id="evName" placeholder="比如：TA 的生日 / 第一次看海" />
+        <input class="input" id="evName" placeholder="比如：TA 的生日 / 第一次看海"
+               value="${UI.escapeHtml((ev && ev.name) || '')}" />
       </div>
       <div class="field">
         <span class="field__label">按哪种日历</span>
         <div class="chips" id="evCal" style="margin-top:0;padding-top:0">
-          <button class="chip is-on" type="button" data-cal="solar">公历</button>
-          <button class="chip" type="button" data-cal="lunar">农历（阴历）</button>
+          <button class="chip${calendar === 'solar' ? ' is-on' : ''}" type="button" data-cal="solar">公历</button>
+          <button class="chip${calendar === 'lunar' ? ' is-on' : ''}" type="button" data-cal="lunar">农历（阴历）</button>
         </div>
       </div>
       <div class="field" id="evSolarField">
         <label class="field__label" for="evDate">日期</label>
-        <input class="input" id="evDate" type="date" value="${UI.todayStr()}" />
+        <input class="input" id="evDate" type="date" value="${UI.escapeHtml(
+          (ev && ev.calendar !== 'lunar' && ev.date) || UI.todayStr()
+        )}" />
       </div>
       <div class="field" id="evLunarField" hidden>
         <span class="field__label">农历日期</span>
@@ -1154,8 +1206,8 @@
         <div class="chips" id="evIcons" style="margin-top:0;padding-top:0">
           ${icons
             .map(
-              (x, i) =>
-                `<button class="chip${i === 0 ? ' is-on' : ''}" type="button" data-icon="${x}">${x}</button>`
+              (x) =>
+                `<button class="chip${x === icon ? ' is-on' : ''}" type="button" data-icon="${x}">${x}</button>`
             )
             .join('')}
         </div>
@@ -1163,23 +1215,29 @@
       <div class="field" id="evTypeField">
         <span class="field__label">类型</span>
         <div class="chips" id="evType" style="margin-top:0;padding-top:0">
-          <button class="chip is-on" type="button" data-yearly="1">每年重复</button>
-          <button class="chip" type="button" data-yearly="0">仅一次</button>
+          <button class="chip${yearly ? ' is-on' : ''}" type="button" data-yearly="1">每年重复</button>
+          <button class="chip${yearly ? '' : ' is-on'}" type="button" data-yearly="0">仅一次</button>
         </div>
       </div>
-      <button class="btn btn--primary btn--block" type="button" data-act="add-event">添加</button>
+      <button class="btn btn--primary btn--block" type="button" data-act="save-event">${
+        editing ? '保存修改' : '添加'
+      }</button>
     `;
 
     const body = UI.openSheet(html);
-    let icon = icons[0];
-    let yearly = true;
-    let calendar = 'solar';
+    const $ = (sel) => body.querySelector(sel);
+
+    // 编辑农历事件时，把原来的月/日填回下拉
+    if (calendar === 'lunar') {
+      $('#evLunarMonth').value = String((ev && ev.lunarMonth) || 8);
+      $('#evLunarDay').value = String((ev && ev.lunarDay) || 15);
+    }
 
     function updateLunarHint() {
-      const el = body.querySelector('#evLunarHint');
+      const el = $('#evLunarHint');
       if (!el) return;
-      const lm = Number(body.querySelector('#evLunarMonth').value);
-      const ld = Number(body.querySelector('#evLunarDay').value);
+      const lm = Number($('#evLunarMonth').value);
+      const ld = Number($('#evLunarDay').value);
       const nx = Lunar.nextOccurrence(lm, ld, false, new Date());
       if (!nx) {
         el.textContent = '这个日期暂时算不出来，换一个试试';
@@ -1201,15 +1259,17 @@
 
     function applyCalendar() {
       const isLunar = calendar === 'lunar';
-      body.querySelector('#evSolarField').hidden = isLunar;
-      body.querySelector('#evLunarField').hidden = !isLunar;
-      body.querySelector('#evTypeField').hidden = isLunar; // 农历生日本来就是每年一次
+      $('#evSolarField').hidden = isLunar;
+      $('#evLunarField').hidden = !isLunar;
+      $('#evTypeField').hidden = isLunar; // 农历生日本来就是每年一次
       if (isLunar) {
         yearly = true;
         UI.$$('#evType .chip').forEach((b, i) => b.classList.toggle('is-on', i === 0));
         updateLunarHint();
       }
     }
+
+    applyCalendar();
 
     body.addEventListener('change', (e) => {
       if (e.target.closest('#evLunarMonth') || e.target.closest('#evLunarDay')) updateLunarHint();
@@ -1235,57 +1295,65 @@
         UI.$$('#evType .chip').forEach((b) => b.classList.toggle('is-on', b === ty));
         return;
       }
-      const del = e.target.closest('[data-act="del-event"]');
-      if (del) {
-        const id = del.dataset.id;
-        const next = (Store.getProfile().events || []).filter((x) => x.id !== id);
-        Store.saveProfile({ events: next }).then(() => {
-          UI.closeSheet();
-          openEvents();
-          render();
-        });
-        render();
+
+      const save = e.target.closest('[data-act="save-event"]');
+      if (!save) return;
+
+      const name = $('#evName').value.trim();
+      if (!name) {
+        UI.toast('给它起个名字吧');
         return;
       }
-      const add = e.target.closest('[data-act="add-event"]');
-      if (add) {
-        const name = body.querySelector('#evName').value.trim();
-        if (!name) {
-          UI.toast('给它起个名字吧');
+
+      const nextEvent = Object.assign({}, ev || {}, {
+        id: (ev && ev.id) || UI.uid(),
+        name: name,
+        icon: icon,
+        yearly: yearly
+      });
+
+      if (calendar === 'lunar') {
+        const lm = Number($('#evLunarMonth').value);
+        const ld = Number($('#evLunarDay').value);
+        const nx = Lunar.nextOccurrence(lm, ld, false, new Date());
+        Object.assign(nextEvent, {
+          calendar: 'lunar',
+          lunarMonth: lm,
+          lunarDay: ld,
+          lunarIsLeap: false,
+          yearly: true,
+          date: nx ? nx.y + '-' + UI.pad2(nx.m) + '-' + UI.pad2(nx.d) : UI.todayStr()
+        });
+      } else {
+        const date = $('#evDate').value;
+        if (!date) {
+          UI.toast('选一个日期');
           return;
         }
-        const nextEvent = { id: UI.uid(), name: name, icon: icon, yearly: yearly };
+        nextEvent.date = date;
+        nextEvent.calendar = 'solar';
+        delete nextEvent.lunarMonth;
+        delete nextEvent.lunarDay;
+        delete nextEvent.lunarIsLeap;
+      }
 
-        if (calendar === 'lunar') {
-          const lm = Number(body.querySelector('#evLunarMonth').value);
-          const ld = Number(body.querySelector('#evLunarDay').value);
-          const nx = Lunar.nextOccurrence(lm, ld, false, new Date());
-          Object.assign(nextEvent, {
-            calendar: 'lunar',
-            lunarMonth: lm,
-            lunarDay: ld,
-            lunarIsLeap: false,
-            yearly: true,
-            date: nx ? nx.y + '-' + UI.pad2(nx.m) + '-' + UI.pad2(nx.d) : UI.todayStr()
-          });
-        } else {
-          const date = body.querySelector('#evDate').value;
-          if (!date) {
-            UI.toast('选一个日期');
-            return;
-          }
-          nextEvent.date = date;
-          nextEvent.calendar = 'solar';
-        }
+      const all = Store.getProfile().events || [];
+      const next = editing
+        ? all.map((x) => (x.id === nextEvent.id ? nextEvent : x))
+        : all.concat([nextEvent]);
 
-        Store.saveProfile({ events: (Store.getProfile().events || []).concat([nextEvent]) }).then(() => {
+      save.disabled = true;
+      Store.saveProfile({ events: next })
+        .then(() => {
           UI.closeSheet();
           openEvents();
           render();
+          UI.toast(calendar === 'lunar' ? '已保存，以后每年按农历提醒' : '已保存');
+        })
+        .catch(() => {
+          save.disabled = false;
+          UI.toast('保存失败，稍后再试');
         });
-        render();
-        UI.toast(calendar === 'lunar' ? '已添加，以后每年按农历提醒' : '已添加');
-      }
     });
   }
 
@@ -1728,9 +1796,31 @@
       location.protocol === 'https:' ||
       location.hostname === 'localhost' ||
       location.hostname === '127.0.0.1';
-    if ('serviceWorker' in navigator && secure) {
-      navigator.serviceWorker.register('./sw.js').catch(() => { /* 离线缓存不可用时静默降级 */ });
-    }
+    if (!('serviceWorker' in navigator) || !secure) return;
+
+    navigator.serviceWorker
+      .register('./sw.js')
+      .then((reg) => {
+        // 发现新版本并激活后，自动刷新一次，省得用户手动清缓存
+        const reloadOnce = () => {
+          if (!navigator.serviceWorker.controller) return;
+          if (sessionStorage.getItem('ld:sw-reloaded') === '1') return;
+          sessionStorage.setItem('ld:sw-reloaded', '1');
+          location.reload();
+        };
+        reg.addEventListener('updatefound', () => {
+          const sw = reg.installing;
+          if (!sw) return;
+          sw.addEventListener('statechange', () => {
+            if (sw.state === 'activated') reloadOnce();
+          });
+        });
+        // 已经处于等待中的更新，也直接生效
+        if (reg.waiting && navigator.serviceWorker.controller) reloadOnce();
+      })
+      .catch(() => {
+        /* 离线缓存不可用时静默降级 */
+      });
   }
 
   /* ---------------- 应用入口 ---------------- */

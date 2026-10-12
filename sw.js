@@ -36,24 +36,29 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET' || !req.url.startsWith(self.location.origin)) return;
 
-  // 页面导航：网络优先，离线时回落到缓存的首页
-  if (req.mode === 'navigate') {
+  const isPage = req.mode === 'navigate';
+  // 页面、脚本、样式总是优先取最新的，保证「一刷新就是新版」；离线才回落缓存
+  const isFresh = isPage || /\.(js|css|webmanifest)$/i.test(new URL(req.url).pathname);
+
+  if (isFresh) {
     event.respondWith(
       fetch(req)
         .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put('./index.html', copy));
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(isPage ? './index.html' : req, copy));
+          }
           return res;
         })
-        .catch(() => caches.match('./index.html'))
+        .catch(() => caches.match(isPage ? './index.html' : req, { ignoreSearch: true }))
     );
     return;
   }
 
-  // 静态资源：先秒开缓存，同时后台拉取新版本（下次刷新即为最新）
+  // 图标等不常变的资源：缓存优先，后台悄悄更新
   event.respondWith(
     caches.open(CACHE).then(async (cache) => {
-      const cached = await cache.match(req);
+      const cached = await cache.match(req, { ignoreSearch: true });
       const network = fetch(req)
         .then((res) => {
           if (res && res.ok) cache.put(req, res.clone());
