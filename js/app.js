@@ -785,119 +785,6 @@
     });
   }
 
-  /* 搜地点前先拿一个粗略位置：GPS（授权过就精准）-> IP 定位（免授权，城市级） */
-  function roughLocation() {
-    return new Promise((resolve) => {
-      let done = false;
-      const finish = (v) => {
-        if (!done) {
-          done = true;
-          resolve(v);
-        }
-      };
-      try {
-        navigator.geolocation.getCurrentPosition(
-          (p) => finish({ lat: p.coords.latitude, lng: p.coords.longitude }),
-          () => finish(null),
-          { timeout: 3000, maximumAge: 300000 }
-        );
-        setTimeout(() => finish(null), 3600);
-      } catch (err) {
-        finish(null);
-      }
-    }).then(async (gps) => {
-      if (gps) return gps;
-      try {
-        const ctl = new AbortController();
-        const timer = setTimeout(() => ctl.abort(), 6000);
-        const r = await fetch(
-          'https://api.bigdatacloud.net/data/reverse-geocode-client?localityLanguage=zh',
-          { signal: ctl.signal }
-        );
-        clearTimeout(timer);
-        const d = await r.json();
-        if (d && d.latitude && d.longitude) return { lat: d.latitude, lng: d.longitude };
-      } catch (err) {
-        /* 忽略 */
-      }
-      return null;
-    });
-  }
-
-  /* 地点搜索：输入关键词 -> 云端调腾讯位置服务 -> 点选填入地点栏 */
-  function bindPlaceSearch(body) {
-    const btn = body.querySelector('#btnSearchPlace');
-    const box = body.querySelector('#psBox');
-    if (!btn || !box || btn.dataset.bound) return;
-    btn.dataset.bound = '1';
-
-    const listEl = box.querySelector('#psList');
-    const inputEl = box.querySelector('#psKeyword');
-    let items = [];
-
-    function renderList(list) {
-      items = list || [];
-      if (!items.length) {
-        listEl.innerHTML =
-          '<div class="empty__desc" style="padding:10px 12px">没找到，换个关键词试试</div>';
-        return;
-      }
-      listEl.innerHTML = items
-        .map(
-          (p, i) =>
-            `<div class="event-row" data-pick="${i}" style="cursor:pointer">
-              <div class="event-row__icon">📍</div>
-              <div class="event-row__main">
-                <div class="event-row__name">${UI.escapeHtml(p.title)}</div>
-                <div class="event-row__date">${UI.escapeHtml(p.address || '')}</div>
-              </div>
-            </div>`
-        )
-        .join('');
-    }
-
-    async function doSearch() {
-      const kw = (inputEl.value || '').trim();
-      if (!kw) {
-        UI.toast('先输入要搜的地点关键词');
-        return;
-      }
-      listEl.innerHTML = '<div class="empty__desc" style="padding:10px 12px">搜索中…</div>';
-      try {
-        const loc = await roughLocation();
-        const d = await Cloud.api.searchPlace(kw, loc ? loc.lat : 0, loc ? loc.lng : 0);
-        renderList(d.list || []);
-      } catch (err) {
-        listEl.innerHTML =
-          '<div class="empty__desc" style="padding:10px 12px">' +
-          UI.escapeHtml(err.message || '搜索失败') +
-          '</div>';
-      }
-    }
-
-    btn.addEventListener('click', () => {
-      box.hidden = !box.hidden;
-      if (!box.hidden) inputEl.focus();
-    });
-    body.querySelector('#psGo').addEventListener('click', doSearch);
-    inputEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') doSearch();
-    });
-
-    listEl.addEventListener('click', (e) => {
-      const pick = e.target.closest('[data-pick]');
-      if (!pick) return;
-      const p = items[Number(pick.dataset.pick)];
-      if (!p) return;
-      const input = body.querySelector('#fPlace');
-      if (input) input.value = p.title;
-      if (body.querySelector('#psKeyword')) body.querySelector('#psKeyword').value = '';
-      syncDraft();
-      box.hidden = true;
-      UI.toast('已选择：' + p.title);
-    });
-  }
-
   function composeHtml(draft) {
     const moods = MOODS.map(
       (m) =>
@@ -929,19 +816,6 @@
                    value="${UI.escapeHtml(draft.place || '')}" style="flex:1;min-width:0" />
             <button class="btn btn--ghost btn--sm" type="button" id="btnLocate"
                     style="flex:none;white-space:nowrap">📍 定位</button>
-          </div>
-          <button class="btn btn--ghost btn--sm" type="button" id="btnSearchPlace"
-                  style="margin-top:8px;width:100%">🔍 搜索地点选一个</button>
-          <div id="psBox" hidden style="margin-top:10px">
-            <div class="row" style="gap:8px;align-items:center">
-              <input class="input" id="psKeyword" type="text" placeholder="店名 / 地标 / 小区"
-                     style="flex:1;min-width:0" />
-              <button class="btn btn--primary btn--sm" type="button" id="psGo"
-                      style="flex:none;white-space:nowrap">搜索</button>
-            </div>
-            <div class="card" id="psList" style="margin-top:10px;min-height:60px;padding:6px 0">
-              <div class="empty__desc" style="padding:10px 12px">输入关键词，搜你附近的店和地标</div>
-            </div>
           </div>
         </div>
       </div>
@@ -1030,7 +904,6 @@
     });
     renderThumbs();
     bindLocate(body);
-    bindPlaceSearch(body);
 
     const fileInput = body.querySelector('#fFile');
 
