@@ -36,9 +36,13 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET' || !req.url.startsWith(self.location.origin)) return;
 
+  const pathname = new URL(req.url).pathname;
+  // 安装包等文件交给浏览器自己处理，不参与缓存
+  if (/\.(apk|zip)$/i.test(pathname)) return;
+
   const isPage = req.mode === 'navigate';
   // 页面、脚本、样式总是优先取最新的，保证「一刷新就是新版」；离线才回落缓存
-  const isFresh = isPage || /\.(js|css|webmanifest)$/i.test(new URL(req.url).pathname);
+  const isFresh = isPage || /\.(js|css|webmanifest)$/i.test(pathname);
 
   if (isFresh) {
     event.respondWith(

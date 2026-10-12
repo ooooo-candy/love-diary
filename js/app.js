@@ -594,14 +594,18 @@
           </div>
           <div class="setting-row">
             <div class="setting-row__main">
-              <div class="setting-row__label">安装到手机桌面</div>
+              <div class="setting-row__label">${isIOS() ? '添加到手机桌面' : '安装安卓版 App'}</div>
               <div class="setting-row__hint">${
-                installPrompt
-                  ? '一键安装，像原生 App 一样全屏打开、可离线使用'
-                  : '像原生 App 一样全屏打开；iOS 点开后有分步指引'
+                isIOS()
+                  ? '用 Safari 打开后点「分享 → 添加到主屏幕」'
+                  : isAppMode()
+                  ? '需要重装或发给朋友安装时，在这里下载最新安装包'
+                  : '下载安装包，独立图标、全屏打开；以后自动更新，不用重装'
               }</div>
             </div>
-            <button class="btn btn--ghost btn--sm" type="button" data-act="install">安装</button>
+            <button class="btn btn--ghost btn--sm" type="button" data-act="${
+              isIOS() ? 'install' : 'download-apk'
+            }">${isIOS() ? '指引' : '下载'}</button>
           </div>
           <div class="setting-row">
             <div class="setting-row__main">
@@ -1071,7 +1075,21 @@
           save.textContent = '保存';
           UI.toast(err.message || '保存失败');
         }
+        return;
       }
+
+      // 设置里的其他入口（安装包 / 检查更新 / 备份 / 重要日子 等）
+      const other = e.target.closest('[data-act]');
+      if (!other) return;
+      const a = other.dataset.act;
+      if (a === 'download-apk') return downloadApk();
+      if (a === 'force-update') return forceUpdate();
+      if (a === 'export') return exportBackup();
+      if (a === 'import') return importBackup();
+      if (a === 'events') return openEvents();
+      if (a === 'clear') return clearAll();
+      if (a === 'logout') return AuthView.signOut();
+      if (a === 'security') return openSecurity();
     });
   }
 
@@ -1729,6 +1747,38 @@
     return /iphone|ipad|ipod/i.test(navigator.userAgent);
   }
 
+  /* 是否已经在 App 里打开（装了安卓包或加到桌面后全屏运行） */
+  function isAppMode() {
+    try {
+      if (/Capacitor/i.test(navigator.userAgent)) return true;
+      if (navigator.standalone === true) return true;
+      return window.matchMedia('(display-mode: standalone)').matches;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /* 下载安卓安装包（安装包会随每次发布自动更新到同一地址） */
+  function downloadApk() {
+    const url = './chaomu.apk';
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'chaomu.apk';
+      a.rel = 'noopener';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      // 稍后再移除，避免浏览器还没来得及开始下载就找不到元素
+      setTimeout(() => {
+        if (a.parentNode) a.parentNode.removeChild(a);
+      }, 4000);
+      UI.toast('开始下载安装包…');
+    } catch (err) {
+      location.href = url;
+    }
+  }
+
   function showInstallGuide() {
     const steps = isIOS()
       ? ['用 <b>Safari</b> 打开本页', '点击底部工具栏的<b>分享</b>按钮 <b>⎋</b>', '选择「<b>添加到主屏幕</b>」', '点击右上角「<b>添加</b>」，完成！']
@@ -1934,6 +1984,7 @@
     if (act === 'events') return openEvents();
     if (act === 'export') return exportBackup();
     if (act === 'install') return tryInstall();
+    if (act === 'download-apk') return downloadApk();
     if (act === 'force-update') return forceUpdate();
     if (act === 'import') return importBackup();
     if (act === 'clear') return clearAll();
