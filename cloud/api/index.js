@@ -22,6 +22,47 @@ const LOCK_MINUTES = 10;
 
 const EMPTY = { users: [], books: [], records: [], emailCodes: [] };
 
+/* 每日一问题库：按日期确定性轮换，两人同一天永远是同一题 */
+const DAILY_QUESTIONS = [
+  '今天最让你开心的一件小事是什么？',
+  'TA 今天哪个瞬间让你心动了？',
+  '如果现在可以立刻见到 TA，你最想做的第一件事是什么？',
+  '今天吃到的最好吃的东西是什么？想带 TA 去吃吗？',
+  '今天有没有哪个瞬间特别想 TA？',
+  '用三个词形容一下今天的心情。',
+  '最近最想和 TA 一起去做的一件事是什么？',
+  '今天有什么想跟 TA 分享但还没说的吗？',
+  '如果给今天的你们拍一张照片，会是什么画面？',
+  '今天有比昨天更爱 TA 一点吗？为什么？',
+  '最近一次笑出声是因为什么？',
+  '如果明天是周末，你最理想的安排是什么？',
+  '今天天气怎么样？像不像你们某次一起经历的那天？',
+  '最近单曲循环的歌是什么？想跟 TA 一起听吗？',
+  '今天学到了什么新东西？',
+  '如果可以用一个表情包总结今天，是哪一个？',
+  '今天有想跟 TA 倒的小烦恼吗？',
+  '你们下一次约会，你最想去哪里？',
+  '最近有没有什么小目标想和 TA 一起完成？',
+  '今天路过哪里的时候想起了你们的故事？',
+  '如果 TA 现在站在你面前，你想说的第一句话是什么？',
+  '今天为自己做了什么好事？顺便夸夸自己。',
+  '最近一次觉得「有 TA 真好」是什么时候？',
+  '如果送 TA 一份不需要花钱的礼物，会是什么？',
+  '今天几点起床的？想不想和 TA 一起赖床？',
+  '最近一次梦到 TA 是什么梦？',
+  '今天的你，最想被 TA 怎么夸？',
+  '如果你们的爱情是一部电影，今天演到哪一幕了？',
+  '明天最期待的一件事是什么？',
+  '今天有没有什么想存起来、等老了一起回味的瞬间？'
+];
+
+function dailyQuestion(dateStr) {
+  let h = 0;
+  const s = String(dateStr || '');
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 1000000;
+  return DAILY_QUESTIONS[h % DAILY_QUESTIONS.length];
+}
+
 const COLLECTION_KEYS = ['users', 'books', 'records', 'emailCodes'];
 
 const CODE_MINUTES = 10;
@@ -324,6 +365,21 @@ function publicBook(b) {
     partnerAvatar: b.partnerAvatar || null,
     events: b.events || [],
     members: b.members || [],
+    wishes: b.wishes || [],
+    miss: b.miss || null,
+    daily: (function () {
+      const today = new Date().toISOString().slice(0, 10);
+      const entry = ((b.dailyQA || []).filter((x) => x.date === today)[0]) || { date: today, answers: {} };
+      return { date: today, question: dailyQuestion(today), answers: entry.answers || {} };
+    })(),
+    dailyHistory: (b.dailyQA || [])
+      .slice(-60)
+      .reverse()
+      .map((x) => ({
+        date: x.date,
+        question: dailyQuestion(x.date),
+        answers: x.answers || {}
+      })),
     createdBy: b.createdBy || ''
   };
 }
@@ -340,6 +396,7 @@ function publicRecord(r) {
     mood: r.mood || 'sweet',
     tags: r.tags || [],
     images: r.images || [],
+    audio: r.audio || null,
     createdAt: r.createdAt || 0,
     updatedAt: r.updatedAt || 0
   };
@@ -847,6 +904,10 @@ const handlers = {
         w: img.w || 0,
         h: img.h || 0
       })),
+      audio:
+        input.audio && input.audio.id
+          ? { id: input.audio.id, duration: Number(input.audio.duration) || 0 }
+          : null,
       authorId: u._id,
       authorName: u.nickname || u.username,
       bookId: b._id,
@@ -946,6 +1007,93 @@ const handlers = {
         lng: p.location ? p.location.lng : 0
       }))
     };
+  },
+
+  /* ---------- 每日一问 ---------- */
+
+  async answerDaily(payload) {
+    const db = await loadDB();
+    const u = userByToken(db, payload.uid, payload.token);
+    const b = bookOfUser(db, u);
+    if (!b) fail('还没有加入任何本子', 'NO_BOOK');
+
+    const text = String(payload.text || '').trim().slice(0, 500);
+    if (!text) fail('先写点什么再保存吧', 'EMPTY');
+
+    const today = new Date().toISOString().slice(0, 10);
+    const qa = (b.dailyQA = b.dailyQA || []);
+    let entry = qa.filter((x) => x.date === today)[0];
+    if (!entry) {
+      entry = { date: today, answers: {} };
+      qa.push(entry);
+    }
+    entry.answers[u._id] = text;
+    await saveDB(db);
+    return { ok: true };
+  },
+
+  /* ---------- 心愿清单 ---------- */
+
+  async addWish(payload) {
+    const db = await loadDB();
+    const u = userByToken(db, payload.uid, payload.token);
+    const b = bookOfUser(db, u);
+    if (!b) fail('还没有加入任何本子', 'NO_BOOK');
+
+    const text = String(payload.text || '').trim().slice(0, 100);
+    if (!text) fail('写下想一起做的事', 'EMPTY');
+    const wishes = (b.wishes = b.wishes || []);
+    if (wishes.length >= 200) fail('心愿太多啦，先完成几个吧', 'FULL');
+    wishes.push({
+      id: 'w_' + Date.now().toString(36) + rand(6),
+      text: text,
+      done: false,
+      createdBy: u._id,
+      createdAt: Date.now()
+    });
+    await saveDB(db);
+    return { ok: true };
+  },
+
+  async toggleWish(payload) {
+    const db = await loadDB();
+    const u = userByToken(db, payload.uid, payload.token);
+    const b = bookOfUser(db, u);
+    if (!b) fail('还没有加入任何本子', 'NO_BOOK');
+    const w = (b.wishes || []).filter((x) => x.id === payload.id)[0];
+    if (!w) fail('心愿不存在', 'NO_WISH');
+    w.done = !w.done;
+    w.doneAt = w.done ? Date.now() : 0;
+    w.doneBy = w.done ? u._id : '';
+    await saveDB(db);
+    return { ok: true };
+  },
+
+  async removeWish(payload) {
+    const db = await loadDB();
+    const u = userByToken(db, payload.uid, payload.token);
+    const b = bookOfUser(db, u);
+    if (!b) fail('还没有加入任何本子', 'NO_BOOK');
+    b.wishes = (b.wishes || []).filter((x) => x.id !== payload.id);
+    await saveDB(db);
+    return { ok: true };
+  },
+
+  /* ---------- 悄悄话·想你 ---------- */
+
+  async sendMiss(payload) {
+    const db = await loadDB();
+    const u = userByToken(db, payload.uid, payload.token);
+    const b = bookOfUser(db, u);
+    if (!b) fail('还没有加入任何本子', 'NO_BOOK');
+
+    const today = new Date().toISOString().slice(0, 10);
+    const m = b.miss && b.miss.date === today ? b.miss : { date: today, counts: {}, seen: {} };
+    b.miss = m;
+    m.counts[u._id] = (m.counts[u._id] || 0) + 1;
+    await saveDB(db);
+    const partnerId = (b.members || []).filter((x) => x !== u._id)[0] || '';
+    return { myCount: m.counts[u._id] || 0, partnerCount: m.counts[partnerId] || 0 };
   },
 
   async getFileUrl(payload) {

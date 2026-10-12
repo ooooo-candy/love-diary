@@ -204,6 +204,20 @@
 
     const latest = records.slice(0, 3);
 
+    const myId = (Cloud.session && Cloud.session.uid) || '';
+    const partnerId = (p.members || []).filter((m) => m !== myId)[0] || '';
+
+    const daily = p.daily || null;
+    const dailyMine = daily && daily.answers ? daily.answers[myId] || '' : '';
+    const dailyPartner = daily && daily.answers ? daily.answers[partnerId] || '' : '';
+
+    const wishes = p.wishes || [];
+    const wishDone = wishes.filter((w) => w.done).length;
+    const wishPct = wishes.length ? Math.round((wishDone / wishes.length) * 100) : 0;
+
+    const missCounts = (p.miss && p.miss.counts) || {};
+    const partnerMiss = missCounts[partnerId] || 0;
+
     return `
       <div class="love-card">
         <div class="love-card__hearts">${hearts}</div>
@@ -215,6 +229,32 @@
         <div class="love-card__names">${UI.escapeHtml(p.myName)} & ${UI.escapeHtml(p.partnerName)}</div>
         <div class="love-card__days"><b>${days}</b><span>天在一起</span></div>
         <div class="love-card__since">始于 ${UI.escapeHtml(String(p.anniversary).replace(/-/g, '.'))}</div>
+        <button class="miss-btn" type="button" data-act="send-miss">💗 想你</button>
+        ${partnerMiss ? `<div class="miss-hint">TA 今天想了你 ${partnerMiss} 次 💗</div>` : ''}
+      </div>
+
+      <div class="section">
+        <div class="card dq-card" data-act="daily-open">
+          <div class="dq-head">
+            <span class="dq-label">💬 今日一问</span>
+            <button class="section__more" type="button" data-act="daily-history">回顾</button>
+          </div>
+          <div class="dq-q">${UI.escapeHtml(daily ? daily.question : '')}</div>
+          <div class="dq-row">
+            <div class="dq-a">
+              <b>我</b>
+              <span>${
+                dailyMine ? UI.escapeHtml(dailyMine) : '<i class="dq-empty">还没回答，点这里写</i>'
+              }</span>
+            </div>
+            <div class="dq-a">
+              <b>TA</b>
+              <span>${
+                dailyPartner ? UI.escapeHtml(dailyPartner) : '<i class="dq-empty">还没回答</i>'
+              }</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       ${
@@ -236,6 +276,21 @@
           <button class="section__more" type="button" data-act="events">管理</button>
         </div>
         <div class="card">${eventHtml}</div>
+      </div>
+
+      <div class="section">
+        <div class="card wish-card" data-act="wishes">
+          <div class="wish-head">
+            <span>✨ 心愿清单</span>
+            <span class="wish-count">${wishDone} / ${wishes.length} 已完成</span>
+          </div>
+          <div class="wish-bar"><i style="width:${wishPct}%"></i></div>
+          ${
+            wishes.length
+              ? `<div class="wish-latest">最近的心愿：${UI.escapeHtml(wishes[wishes.length - 1].text)}</div>`
+              : `<div class="drop-hint" style="margin-top:8px">写下你们想一起做的事，完成一件点亮一件</div>`
+          }
+        </div>
       </div>
 
       <div class="section">
@@ -303,6 +358,13 @@
         </div>
         ${rec.title ? `<h3 class="record__title">${UI.escapeHtml(rec.title)}</h3>` : ''}
         ${rec.note ? `<div class="record__note">${UI.escapeHtml(rec.note)}</div>` : ''}
+        ${
+          rec.audio && rec.audio.id
+            ? `<button class="voice-play" type="button" data-act="play-voice" data-id="${UI.escapeHtml(
+                rec.audio.id
+              )}">▶ 语音日记</button>`
+            : ''
+        }
         ${grid}
         ${tags ? `<div class="record__tags">${tags}</div>` : ''}
       </article>`;
@@ -717,6 +779,16 @@
           <input class="input" id="fPlace" type="text" placeholder="比如：那家小面馆"
                  value="${UI.escapeHtml(draft.place || '')}" />
         </div>
+        <div class="field">
+          <span class="field__label">语音日记（选填）</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn--ghost btn--sm" type="button" id="btnVoice"
+                    style="white-space:nowrap">🎙 开始录音</button>
+            <span id="voiceTime" style="font-size:12px;color:var(--text-dim)"></span>
+            <button class="mini-btn" type="button" id="btnVoiceDel" hidden title="删除录音">🗑</button>
+          </div>
+          <audio id="voicePreview" controls hidden style="width:100%;margin-top:8px"></audio>
+        </div>
       </div>
 
       <div class="field">
@@ -779,6 +851,96 @@
     });
   }
 
+  /* 写记录弹窗里的语音录制（MediaRecorder） */
+  function bindVoice(body) {
+    const btn = body.querySelector('#btnVoice');
+    const timeEl = body.querySelector('#voiceTime');
+    const delBtn = body.querySelector('#btnVoiceDel');
+    const prev = body.querySelector('#voicePreview');
+    if (!btn || btn.dataset.bound) return;
+    btn.dataset.bound = '1';
+
+    let rec = null;
+    let chunks = [];
+    let timer = null;
+    let startedAt = 0;
+
+    function refresh() {
+      const a = state.drafting && state.drafting.audio;
+      if (a && (a.blob || a.id)) {
+        btn.textContent = '🎙 重录';
+        delBtn.hidden = false;
+        if (a.url) {
+          prev.src = a.url;
+          prev.hidden = false;
+        }
+        timeEl.textContent = a.duration ? Math.round(a.duration) + '″' : '';
+      } else {
+        btn.textContent = '🎙 开始录音';
+        delBtn.hidden = true;
+        prev.hidden = true;
+        prev.removeAttribute('src');
+        timeEl.textContent = '';
+      }
+    }
+
+    async function toggleRecord() {
+      if (rec && rec.state === 'recording') {
+        rec.stop();
+        return;
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        UI.toast('这台设备不支持录音');
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        rec = new MediaRecorder(stream);
+        chunks = [];
+        startedAt = Date.now();
+        rec.ondataavailable = (e) => {
+          if (e.data && e.data.size) chunks.push(e.data);
+        };
+        rec.onstop = () => {
+          try {
+            stream.getTracks().forEach((t) => t.stop());
+          } catch (err) {
+            /* 忽略 */
+          }
+          clearInterval(timer);
+          const mime = rec.mimeType || 'audio/webm';
+          const blob = new Blob(chunks, { type: mime });
+          const dur = Math.max(1, (Date.now() - startedAt) / 1000);
+          if (state.drafting) {
+            state.drafting.audio = {
+              blob: blob,
+              url: URL.createObjectURL(blob),
+              duration: dur,
+              ext: mime.indexOf('mp4') >= 0 || mime.indexOf('m4a') >= 0 ? 'm4a' : 'webm'
+            };
+          }
+          refresh();
+          UI.toast('录音完成，保存记录时会一起上传');
+        };
+        rec.start();
+        btn.textContent = '⏹ 停止录音';
+        timer = setInterval(() => {
+          timeEl.textContent = Math.floor((Date.now() - startedAt) / 1000) + '″ 录音中…';
+        }, 400);
+      } catch (err) {
+        UI.toast('拿不到麦克风，请检查权限');
+      }
+    }
+
+    btn.addEventListener('click', toggleRecord);
+    delBtn.addEventListener('click', () => {
+      if (state.drafting) state.drafting.audio = null;
+      refresh();
+    });
+
+    refresh();
+  }
+
   function openCompose(rec) {
     const draft = rec
       ? JSON.parse(JSON.stringify(rec))
@@ -802,6 +964,7 @@
       onClose: () => { state.drafting = null; }
     });
     renderThumbs();
+    bindVoice(body);
 
     const fileInput = body.querySelector('#fFile');
 
@@ -926,6 +1089,25 @@
       })),
       createdAt: d.createdAt || Date.now()
     };
+
+    // 语音日记：新录音先上传；编辑时未重录则沿用云端已有的
+    if (d.audio) {
+      if (d.audio.blob) {
+        const keepBtn0 = UI.$$('#sheet [data-act="save"]')[0];
+        if (keepBtn0) keepBtn0.textContent = '上传语音中…';
+        const up = await Cloud.uploadImage(
+          blobToFile(d.audio.blob, 'voice.' + (d.audio.ext || 'webm'))
+        );
+        payload.audio = { id: up.fileId, duration: Math.round(d.audio.duration || 0) };
+      } else if (d.audio.id) {
+        payload.audio = { id: d.audio.id, duration: Math.round(d.audio.duration || 0) };
+      } else {
+        payload.audio = null;
+      }
+    } else {
+      payload.audio = null;
+    }
+
     const keepBtn = UI.$$('#sheet [data-act="save"]')[0];
     if (keepBtn) {
       keepBtn.disabled = true;
@@ -1093,6 +1275,247 @@
       if (a === 'logout') return AuthView.signOut();
       if (a === 'security') return openSecurity();
     });
+  }
+
+  /* ---------------- 悄悄话·想你 ---------------- */
+
+  async function sendMiss() {
+    try {
+      const r = await Cloud.api.sendMiss();
+      const card = document.querySelector('.love-card');
+      if (card) {
+        const hearts = card.querySelector('.love-card__hearts');
+        if (hearts) {
+          const s = document.createElement('span');
+          s.className = 'miss-fly';
+          s.textContent = '💗';
+          s.style.left = 15 + Math.random() * 70 + '%';
+          hearts.appendChild(s);
+          setTimeout(() => s.remove(), 3200);
+        }
+      }
+      render();
+      UI.toast(
+        r.partnerCount > 0
+          ? 'TA 今天已经想了你 ' + r.partnerCount + ' 次，你们想到一起了 ❤'
+          : '已经悄悄告诉 TA：你想 TA 了 ❤'
+      );
+    } catch (err) {
+      UI.toast(err.message || '发送失败');
+    }
+  }
+
+  /* ---------------- 每日一问 ---------------- */
+
+  function openDailyAnswer() {
+    const p = Store.getProfile();
+    const daily = p.daily || {};
+    const myId = (Cloud.session && Cloud.session.uid) || '';
+    const mine = (daily.answers || {})[myId] || '';
+
+    const html = `
+      <div class="sheet__title">
+        <span>今日一问</span>
+        <button class="mini-btn" type="button" data-act="close-sheet">✕</button>
+      </div>
+      <div class="dq-q" style="font-size:15px;font-weight:700;margin:2px 0 14px">${UI.escapeHtml(
+        daily.question || ''
+      )}</div>
+      <div class="field">
+        <textarea class="input textarea" id="dqText" maxlength="500"
+                  placeholder="写下你的答案…答完后你们就能看到彼此的了">${UI.escapeHtml(mine)}</textarea>
+      </div>
+      <button class="btn btn--primary btn--block" type="button" data-act="save-daily">保存回答</button>
+      <div class="drop-hint" style="margin-top:12px">保存后，你们两个都能看到彼此今天的答案；每天的问题会换一个</div>
+    `;
+    const body = UI.openSheet(html);
+    body.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-act="save-daily"]');
+      if (!btn) return;
+      const text = body.querySelector('#dqText').value.trim();
+      if (!text) {
+        UI.toast('先写点什么吧');
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = '保存中…';
+      try {
+        await Cloud.api.answerDaily(text);
+        await Store.sync();
+        UI.closeSheet();
+        render();
+        UI.toast('已保存，去看看 TA 写了什么 ❤');
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = '保存回答';
+        UI.toast(err.message || '保存失败');
+      }
+    });
+  }
+
+  function openDailyHistory() {
+    const p = Store.getProfile();
+    const myId = (Cloud.session && Cloud.session.uid) || '';
+    const partnerId = (p.members || []).filter((m) => m !== myId)[0] || '';
+    const hist = (p.dailyHistory || []).filter((x) => {
+      const a = x.answers || {};
+      return Boolean(a[myId]) || Boolean(partnerId && a[partnerId]);
+    });
+
+    const rows = hist.length
+      ? hist
+          .map((x) => {
+            const mine = (x.answers || {})[myId] || '';
+            const partner = partnerId ? (x.answers || {})[partnerId] || '' : '';
+            return `<div class="dq-hist">
+              <div class="dq-hist__date">${UI.formatDate(x.date)}</div>
+              <div class="dq-hist__q">${UI.escapeHtml(x.question)}</div>
+              ${mine ? `<div class="dq-hist__a"><b>${UI.escapeHtml(p.myName || '我')}</b>${UI.escapeHtml(mine)}</div>` : ''}
+              ${
+                partner
+                  ? `<div class="dq-hist__a"><b>${UI.escapeHtml(p.partnerName || 'TA')}</b>${UI.escapeHtml(partner)}</div>`
+                  : ''
+              }
+            </div>`;
+          })
+          .join('')
+      : '<div class="empty__desc" style="padding:10px 0">还没有历史回答，从今天开始攒吧</div>';
+
+    const html = `
+      <div class="sheet__title">
+        <span>每日一问 · 回顾</span>
+        <button class="mini-btn" type="button" data-act="close-sheet">✕</button>
+      </div>
+      <div style="max-height:60vh;overflow-y:auto">${rows}</div>
+    `;
+    UI.openSheet(html);
+  }
+
+  /* ---------------- 心愿清单 ---------------- */
+
+  function openWishes() {
+    renderWishSheet();
+
+    function renderWishSheet() {
+      const prof = Store.getProfile();
+      const wishes = prof.wishes || [];
+      const myId = (Cloud.session && Cloud.session.uid) || '';
+      const nameOf = (uid) => (uid === myId ? prof.myName || '我' : prof.partnerName || 'TA');
+
+      const rows = wishes.length
+        ? wishes
+            .map(
+              (w) => `<div class="wish-row${w.done ? ' is-done' : ''}">
+                <button class="wish-check" type="button" data-act="toggle-wish" data-id="${UI.escapeHtml(
+                  w.id
+                )}">${w.done ? '✅' : '⬜'}</button>
+                <div class="wish-row__main">
+                  <div class="wish-row__text">${UI.escapeHtml(w.text)}</div>
+                  <div class="wish-row__meta">${UI.escapeHtml(nameOf(w.createdBy))} 许下的${
+                    w.done ? ' · 已完成' : ''
+                  }</div>
+                </div>
+                <button class="mini-btn" type="button" data-act="del-wish" data-id="${UI.escapeHtml(
+                  w.id
+                )}">🗑</button>
+              </div>`
+            )
+            .join('')
+        : '<div class="empty__desc" style="padding:12px 0">写下第一件想一起做的事吧 ✨</div>';
+
+      const html = `
+        <div class="sheet__title">
+          <span>心愿清单</span>
+          <button class="mini-btn" type="button" data-act="close-sheet">✕</button>
+        </div>
+        <div class="card" style="margin-bottom:14px">${rows}</div>
+        <div class="row" style="gap:8px;align-items:center">
+          <input class="input" id="wishText" maxlength="100" placeholder="想一起做的第 ${wishes.length + 1} 件事"
+                 style="flex:1;min-width:0" />
+          <button class="btn btn--primary btn--sm" type="button" data-act="add-wish"
+                  style="flex:none;white-space:nowrap">添加</button>
+        </div>
+      `;
+      const body = UI.openSheet(html);
+      body.addEventListener('click', async (e) => {
+        const tg = e.target.closest('[data-act="toggle-wish"]');
+        if (tg) {
+          try {
+            await Cloud.api.toggleWish(tg.dataset.id);
+            await Store.sync();
+            renderWishSheet();
+            render();
+          } catch (err) {
+            UI.toast(err.message || '操作失败');
+          }
+          return;
+        }
+        const del = e.target.closest('[data-act="del-wish"]');
+        if (del) {
+          try {
+            await Cloud.api.removeWish(del.dataset.id);
+            await Store.sync();
+            renderWishSheet();
+            render();
+          } catch (err) {
+            UI.toast(err.message || '删除失败');
+          }
+          return;
+        }
+        if (e.target.closest('[data-act="add-wish"]')) {
+          const text = body.querySelector('#wishText').value.trim();
+          if (!text) {
+            UI.toast('先写下心愿内容');
+            return;
+          }
+          try {
+            await Cloud.api.addWish(text);
+            await Store.sync();
+            renderWishSheet();
+            render();
+          } catch (err) {
+            UI.toast(err.message || '添加失败');
+          }
+        }
+      });
+      body.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.target.id === 'wishText') {
+          const add = body.querySelector('[data-act="add-wish"]');
+          if (add) add.click();
+        }
+      });
+    }
+  }
+
+  /* ---------------- 语音日记 ---------------- */
+
+  let voiceAudio = null;
+
+  async function playVoice(btn) {
+    const id = btn.dataset.id;
+    if (!id) return;
+    try {
+      if (voiceAudio) {
+        voiceAudio.pause();
+        voiceAudio = null;
+      }
+      btn.textContent = '⏳ 加载中…';
+      const urls = await Cloud.getFileUrls([id]);
+      const url = urls[id];
+      if (!url) throw new Error('取不到语音文件');
+      voiceAudio = new Audio(url);
+      voiceAudio.onended = () => {
+        btn.textContent = '▶ 语音日记';
+      };
+      await voiceAudio.play();
+      btn.textContent = '⏸ 播放中…（再点停止）';
+      voiceAudio.onpause = () => {
+        btn.textContent = '▶ 语音日记';
+      };
+    } catch (err) {
+      btn.textContent = '▶ 语音日记';
+      UI.toast(err.message || '播放失败');
+    }
   }
 
   /* ---------------- 重要日子 ---------------- */
@@ -2114,6 +2537,11 @@
     if (act === 'export') return exportBackup();
     if (act === 'install') return tryInstall();
     if (act === 'download-apk') return downloadApk();
+    if (act === 'send-miss') return sendMiss();
+    if (act === 'daily-open') return openDailyAnswer();
+    if (act === 'daily-history') return openDailyHistory();
+    if (act === 'wishes') return openWishes();
+    if (act === 'play-voice') return playVoice(el);
     if (act === 'force-update') return forceUpdate();
     if (act === 'import') return importBackup();
     if (act === 'clear') return clearAll();

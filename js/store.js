@@ -184,6 +184,10 @@
         palette: b.palette || 'pink',
         theme: b.theme || 'light',
         events: b.events || [],
+        wishes: b.wishes || [],
+        miss: b.miss || null,
+        daily: b.daily || null,
+        dailyHistory: b.dailyHistory || [],
         onboarded: Boolean(state.book),
         code: b.code || '',
         members: b.members || []

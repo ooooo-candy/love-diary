@@ -260,7 +260,13 @@
       updateBook: (patch) => Cloud.call('updateBook', patch),
       listRecords: () => Cloud.call('listRecords', {}),
       upsertRecord: (record) => Cloud.call('upsertRecord', { record: record }),
-      removeRecord: (id) => Cloud.call('removeRecord', { id: id })
+      removeRecord: (id) => Cloud.call('removeRecord', { id: id }),
+      answerDaily: (text) => Cloud.call('answerDaily', { text: text }),
+      getDailyQA: () => Cloud.call('getDailyQA', {}),
+      addWish: (text) => Cloud.call('addWish', { text: text }),
+      toggleWish: (id) => Cloud.call('toggleWish', { id: id }),
+      removeWish: (id) => Cloud.call('removeWish', { id: id }),
+      sendMiss: () => Cloud.call('sendMiss', {})
     }
   };
 

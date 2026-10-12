@@ -87,6 +87,27 @@
       partnerAvatar: b.partnerAvatar || null,
       events: b.events || [],
       members: b.members || [],
+      wishes: b.wishes || [],
+      miss: b.miss || null,
+      daily: (function () {
+        const today = new Date().toISOString().slice(0, 10);
+        const qs = [
+          '今天最让你开心的一件小事是什么？',
+          'TA 今天哪个瞬间让你心动了？',
+          '用三个词形容一下今天的心情。',
+          '最近最想和 TA 一起去做的一件事是什么？',
+          '如果 TA 现在站在你面前，你想说的第一句话是什么？',
+          '明天最期待的一件事是什么？'
+        ];
+        let h = 0;
+        for (const ch of today) h = (h * 31 + ch.charCodeAt(0)) % 100000;
+        const entry = ((b.dailyQA || []).filter((x) => x.date === today)[0]) || { answers: {} };
+        return { date: today, question: qs[h % qs.length], answers: entry.answers || {} };
+      })(),
+      dailyHistory: (b.dailyQA || [])
+        .slice(-60)
+        .reverse()
+        .map((x) => ({ date: x.date, question: '（演示模式题目）', answers: x.answers || {} })),
       createdBy: b.createdBy || ''
     };
   }
@@ -101,6 +122,7 @@
       note: r.note || '',
       place: r.place || '',
       mood: r.mood || 'sweet',
+      audio: r.audio || null,
       tags: r.tags || [],
       images: r.images || [],
       createdAt: r.createdAt || 0,
@@ -457,6 +479,77 @@
       return { book: publicBook(b) };
     },
 
+    async answerDaily(p) {
+      const u = findUser(p.uid, p.token);
+      const b = bookOfUser(u);
+      if (!b) fail('还没有加入任何本子', 'NO_BOOK');
+      const text = String(p.text || '').trim().slice(0, 500);
+      if (!text) fail('先写点什么再保存吧', 'EMPTY');
+      const today = new Date().toISOString().slice(0, 10);
+      const qa = (b.dailyQA = b.dailyQA || []);
+      let entry = qa.filter((x) => x.date === today)[0];
+      if (!entry) {
+        entry = { date: today, answers: {} };
+        qa.push(entry);
+      }
+      entry.answers[u._id] = text;
+      save();
+      return { ok: true };
+    },
+
+    async addWish(p) {
+      const u = findUser(p.uid, p.token);
+      const b = bookOfUser(u);
+      if (!b) fail('还没有加入任何本子', 'NO_BOOK');
+      const text = String(p.text || '').trim().slice(0, 100);
+      if (!text) fail('写下想一起做的事', 'EMPTY');
+      const wishes = (b.wishes = b.wishes || []);
+      wishes.push({
+        id: 'w_' + rand(12),
+        text: text,
+        done: false,
+        createdBy: u._id,
+        createdAt: now()
+      });
+      save();
+      return { ok: true };
+    },
+
+    async toggleWish(p) {
+      const u = findUser(p.uid, p.token);
+      const b = bookOfUser(u);
+      if (!b) fail('还没有加入任何本子', 'NO_BOOK');
+      const w = (b.wishes || []).filter((x) => x.id === p.id)[0];
+      if (!w) fail('心愿不存在', 'NO_WISH');
+      w.done = !w.done;
+      w.doneAt = w.done ? now() : 0;
+      w.doneBy = w.done ? u._id : '';
+      save();
+      return { ok: true };
+    },
+
+    async removeWish(p) {
+      const u = findUser(p.uid, p.token);
+      const b = bookOfUser(u);
+      if (!b) fail('还没有加入任何本子', 'NO_BOOK');
+      b.wishes = (b.wishes || []).filter((x) => x.id !== p.id);
+      save();
+      return { ok: true };
+    },
+
+    async sendMiss(p) {
+      const u = findUser(p.uid, p.token);
+      const b = bookOfUser(u);
+      if (!b) fail('还没有加入任何本子', 'NO_BOOK');
+      const today = new Date().toISOString().slice(0, 10);
+      const m = b.miss && b.miss.date === today ? b.miss : { date: today, counts: {}, seen: {} };
+      b.miss = m;
+      m.counts[u._id] = (m.counts[u._id] || 0) + 1;
+      save();
+      const partnerId = (b.members || []).filter((x) => x !== u._id)[0] || '';
+      return { myCount: m.counts[u._id] || 0, partnerCount: m.counts[partnerId] || 0 };
+    },
+
     async listRecords(p) {
       const u = findUser(p.uid, p.token);
       const b = bookOfUser(u);
@@ -480,6 +573,7 @@
         note: String(input.note || '').slice(0, 5000),
         place: String(input.place || '').slice(0, 60),
         mood: input.mood || 'sweet',
+        audio: input.audio && input.audio.id ? { id: input.audio.id, duration: Number(input.audio.duration) || 0 } : null,
         tags: (input.tags || []).slice(0, 12),
         images: (input.images || []).slice(0, 9),
         authorId: u._id,
