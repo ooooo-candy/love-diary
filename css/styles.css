@@ -362,7 +362,15 @@ img { display: block; max-width: 100%; }
 }
 .search input::placeholder { color: var(--text-dim); }
 
-.chips { display: flex; gap: 8px; overflow-x: auto; padding: 12px 2px 2px; margin-top: 12px; }
+.chips {
+  display: flex; gap: 8px;
+  overflow-x: auto; overflow-y: hidden;
+  padding: 12px 2px 2px; margin-top: 12px;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
 .chips::-webkit-scrollbar { display: none; }
 .chip {
   flex: none;
@@ -584,7 +592,16 @@ img { display: block; max-width: 100%; }
 .row { display: flex; gap: 10px; }
 .row > * { flex: 1; }
 
-.moods { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.moods {
+  display: flex; gap: 8px;
+  overflow-x: auto; overflow-y: hidden;
+  padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+  /* 只认横向手势：左右滑只滚这行表情，不会把整个弹窗带着上下滚 */
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
 .moods::-webkit-scrollbar { display: none; }
 .mood {
   flex: none;
