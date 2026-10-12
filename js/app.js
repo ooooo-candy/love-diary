@@ -567,6 +567,13 @@
           </div>
           <div class="setting-row">
             <div class="setting-row__main">
+              <div class="setting-row__label">检查更新</div>
+              <div class="setting-row__hint">App 会自动更新；若发现还是旧界面，点这里强制刷新</div>
+            </div>
+            <button class="btn btn--ghost btn--sm" type="button" data-act="force-update">刷新</button>
+          </div>
+          <div class="setting-row">
+            <div class="setting-row__main">
               <div class="setting-row__label">安装到手机桌面</div>
               <div class="setting-row__hint">${
                 installPrompt
@@ -1571,6 +1578,24 @@
     }
   }
 
+  /* 强制拉取最新版本：清掉离线缓存与 Service Worker 后重新加载 */
+  async function forceUpdate() {
+    UI.toast('正在检查更新…');
+    try {
+      if (window.caches) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+    } catch (err) {
+      /* 忽略 */
+    }
+    location.reload();
+  }
+
   function bindInstallEvents() {
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
@@ -1705,6 +1730,7 @@
     if (act === 'events') return openEvents();
     if (act === 'export') return exportBackup();
     if (act === 'install') return tryInstall();
+    if (act === 'force-update') return forceUpdate();
     if (act === 'import') return importBackup();
     if (act === 'clear') return clearAll();
     if (act === 'logout') return AuthView.signOut();
