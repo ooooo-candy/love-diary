@@ -260,7 +260,8 @@
       updateBook: (patch) => Cloud.call('updateBook', patch),
       listRecords: () => Cloud.call('listRecords', {}),
       upsertRecord: (record) => Cloud.call('upsertRecord', { record: record }),
-      removeRecord: (id) => Cloud.call('removeRecord', { id: id })
+      removeRecord: (id) => Cloud.call('removeRecord', { id: id }),
+      searchPlace: (keyword, lat, lng) => Cloud.call('searchPlace', { keyword: keyword, lat: lat, lng: lng })
     }
   };
 

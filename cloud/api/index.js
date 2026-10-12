@@ -897,6 +897,57 @@ const handlers = {
     return { fileId: res.fileID };
   },
 
+  /* ---------- 地点搜索（腾讯位置服务） ----------
+   * 需要在云函数环境变量里配置 MAP_KEY（lbs.qq.com 免费申请）。
+   * 有经纬度时搜附近 10 公里，没有时用 IP 定位兜底。 */
+  async searchPlace(payload) {
+    const db = await loadDB();
+    userByToken(db, payload.uid, payload.token);
+
+    const key = process.env.MAP_KEY || '';
+    if (!key) fail('地图服务未配置，请先在云函数环境变量里设置 MAP_KEY', 'NO_MAP_KEY');
+
+    const keyword = String(payload.keyword || '').trim().slice(0, 30);
+    if (!keyword) fail('请输入搜索关键词', 'BAD_KEYWORD');
+
+    let lat = Number(payload.lat) || 0;
+    let lng = Number(payload.lng) || 0;
+
+    // 没有坐标时用 IP 定位兜底（粗略到城市级，够圈定搜索范围）
+    if (!lat || !lng) {
+      try {
+        const r = await fetch('https://apis.map.qq.com/ws/location/v1/ip?key=' + key);
+        const d = await r.json();
+        if (d && d.status === 0 && d.result && d.result.location) {
+          lat = d.result.location.lat;
+          lng = d.result.location.lng;
+        }
+      } catch (err) {
+        /* 忽略 */
+      }
+    }
+    if (!lat || !lng) fail('暂时无法确定搜索范围，请打开定位后重试', 'NO_LOCATION');
+
+    const url =
+      'https://apis.map.qq.com/ws/place/v1/search?keyword=' +
+      encodeURIComponent(keyword) +
+      '&boundary=nearby(' + lat + ',' + lng + ',10000,1)' +
+      '&key=' + key +
+      '&page_size=10&page_index=1&orderby=_distance';
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data || data.status !== 0) fail((data && data.message) || '搜索失败', 'SEARCH_FAIL');
+
+    return {
+      list: (data.data || []).map((p) => ({
+        title: p.title || '',
+        address: p.address || '',
+        lat: p.location ? p.location.lat : 0,
+        lng: p.location ? p.location.lng : 0
+      }))
+    };
+  },
+
   async getFileUrl(payload) {
     const db = await loadDB();
     userByToken(db, payload.uid, payload.token);
