@@ -384,7 +384,7 @@ function publicBook(b) {
   };
 }
 
-function publicRecord(r) {
+function publicRecord(r, avatarMap) {
   return {
     id: r._id,
     authorId: r.authorId || '',
@@ -398,10 +398,27 @@ function publicRecord(r) {
     images: r.images || [],
     audio: r.audio || null,
     likes: r.likes || [],
-    comments: (r.comments || []).slice(-100),
+    comments: (r.comments || []).slice(-100).map(function (c) {
+      return Object.assign({}, c, { avatar: (avatarMap && avatarMap[c.uid]) || null });
+    }),
     createdAt: r.createdAt || 0,
     updatedAt: r.updatedAt || 0
   };
+}
+
+/* 评论头像：本子头像（设置页上传的那对）优先，其次账号自带头像 */
+function commentAvatarMap(db, b) {
+  const map = {};
+  if (!b) return map;
+  const other = (b.members || []).filter((x) => x !== b.createdBy)[0];
+  if (b.createdBy && b.myAvatar) map[b.createdBy] = b.myAvatar;
+  if (other && b.partnerAvatar) map[other] = b.partnerAvatar;
+  (b.members || []).forEach((uid) => {
+    if (map[uid]) return;
+    const usr = db.users.filter((x) => x._id === uid)[0];
+    if (usr && usr.avatar) map[uid] = usr.avatar;
+  });
+  return map;
 }
 
 function findUserByName(db, username) {
@@ -882,7 +899,7 @@ const handlers = {
       .filter((r) => r.bookId === b._id)
       .sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : (y.createdAt || 0) - (x.createdAt || 0)))
       .slice(0, 500)
-      .map(publicRecord);
+      .map((r) => publicRecord(r, commentAvatarMap(db, b)));
     return { book: publicBook(b), records: list };
   },
 
@@ -922,13 +939,13 @@ const handlers = {
       Object.assign(old, doc);
       old.createdAt = old.createdAt || Date.now();
       await saveDB(db);
-      return { record: publicRecord(old) };
+      return { record: publicRecord(old, commentAvatarMap(db, b)) };
     }
 
     const rec = Object.assign({ _id: 'r_' + Date.now().toString(36) + rand(8), createdAt: Date.now() }, doc);
     db.records.push(rec);
     await saveDB(db);
-    return { record: publicRecord(rec) };
+    return { record: publicRecord(rec, commentAvatarMap(db, b)) };
   },
 
   async removeRecord(payload) {
@@ -1151,7 +1168,7 @@ const handlers = {
     rec.comments.push(c);
     if (rec.comments.length > 200) rec.comments = rec.comments.slice(-200);
     await saveDB(db);
-    return { comment: c };
+    return { comment: Object.assign({}, c, { avatar: commentAvatarMap(db, b)[c.uid] || null }) };
   },
 
   async delComment(payload) {

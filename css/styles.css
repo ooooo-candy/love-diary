@@ -192,6 +192,10 @@ img { display: block; max-width: 100%; }
   box-shadow: 0 6px 16px -6px rgba(0, 0, 0, .4);
 }
 .avatar--sm { width: 34px; height: 34px; font-size: 16px; border-width: 2px; }
+.avatar--xs {
+  width: 26px; height: 26px; font-size: 12px;
+  border-width: 1.5px; box-shadow: none;
+}
 .love-card__heart {
   font-size: 22px;
   animation: beat 1.6s ease-in-out infinite;
@@ -794,19 +798,22 @@ img { display: block; max-width: 100%; }
 .wish-row__meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
 
 /* ---------- 纠结转盘 ---------- */
+.dc-wrap {
+  display: flex; gap: 14px; align-items: flex-start;
+}
+.dc-left { width: 42%; min-width: 0; }
+.dc-right {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; align-items: center;
+}
 .dc-result {
-  min-height: 86px;
+  min-height: 74px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   text-align: center;
   font-size: 13.5px; line-height: 1.7; color: var(--text-dim);
   background: linear-gradient(135deg, var(--brand-soft), var(--bg));
   border-radius: var(--r-md);
-  padding: 16px; margin-bottom: 14px;
-}
-.dc-now {
-  color: var(--brand);
-  font-size: 17px;
-  padding: 0 2px;
+  padding: 14px; margin-top: 14px;
 }
 .dc-final {
   font-size: 13px; color: var(--text-dim); line-height: 1.8;
@@ -817,23 +824,53 @@ img { display: block; max-width: 100%; }
   color: var(--brand);
   margin-top: 2px;
 }
-.dc-list {
-  display: flex; flex-wrap: wrap; gap: 8px;
-  margin-top: 10px; min-height: 34px;
+.dc-pool {
+  display: flex; flex-wrap: wrap; gap: 7px;
+  min-height: 34px; align-content: flex-start;
 }
-.dc-opt {
-  font-size: 12.5px; font-weight: 600;
-  padding: 7px 12px; border-radius: 999px;
+.dc-pool__opt {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 600;
+  padding: 6px 10px; border-radius: 999px;
   background: var(--card); border: 1.5px solid var(--border);
   cursor: pointer; user-select: none;
   transition: transform .12s ease;
 }
-.dc-opt b { color: var(--text-dim); font-weight: 600; margin-left: 2px; }
-.dc-opt.is-hi {
-  background: linear-gradient(135deg, var(--brand), var(--brand-2));
-  color: #fff; border-color: transparent;
-  transform: scale(1.08);
+.dc-pool__opt:active { transform: scale(.94); }
+.dc-pool__opt.is-on { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+.dc-pool__opt b { color: var(--text-dim); font-weight: 600; padding: 0 1px; }
+.dc-wheel-box {
+  position: relative;
+  width: 208px; height: 208px;
 }
+.dc-wheel-box::before {
+  content: '';
+  position: absolute; top: -6px; left: 50%;
+  transform: translateX(-50%);
+  border-left: 11px solid transparent;
+  border-right: 11px solid transparent;
+  border-top: 18px solid var(--brand);
+  filter: drop-shadow(0 2px 3px rgba(122, 31, 67, .3));
+  z-index: 2;
+}
+#dcCanvas {
+  width: 208px; height: 208px;
+  border-radius: 50%;
+  box-shadow: 0 10px 28px -12px rgba(122, 31, 67, .45), 0 0 0 5px #fff;
+  transition: transform 4.2s cubic-bezier(.12, .8, .16, 1);
+}
+.dc-wheel-tags {
+  display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+  margin: 10px 0; min-height: 26px; max-width: 100%;
+}
+.dc-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600;
+  padding: 4px 9px; border-radius: 999px;
+  background: var(--brand-soft); color: var(--brand);
+  cursor: pointer; user-select: none;
+}
+.dc-tag b { font-weight: 600; opacity: .65; }
 
 /* ---------- 语音日记 ---------- */
 .voice-play {

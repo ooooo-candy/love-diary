@@ -1309,120 +1309,221 @@
   /* ---------------- 纠结转盘 ---------------- */
 
   function openDecision() {
-    let options = [];
-    try {
-      const saved = JSON.parse(localStorage.getItem('ld:decide') || 'null');
-      if (Array.isArray(saved) && saved.length) options = saved.filter((x) => typeof x === 'string');
-    } catch (err) {
-      /* 忽略 */
-    }
-    if (!options.length) options = ['火锅', '烧烤', '寿司'];
+    const read = (key, fb) => {
+      try {
+        const v = JSON.parse(localStorage.getItem(key) || 'null');
+        if (Array.isArray(v)) return v.filter((x) => typeof x === 'string' && x.trim());
+      } catch (err) { /* 忽略 */ }
+      return fb.slice();
+    };
+    const pool = read('ld:decide', ['火锅', '烧烤', '寿司', '麻辣烫', '甜品']);
+    let items = read('ld:decideWheel', []);
+    if (!items.length) items = pool.slice(0, Math.min(pool.length, 6));
+
+    const savePool = () => {
+      try { localStorage.setItem('ld:decide', JSON.stringify(pool)); } catch (err) { /* 忽略 */ }
+    };
+    const saveWheel = () => {
+      try { localStorage.setItem('ld:decideWheel', JSON.stringify(items)); } catch (err) { /* 忽略 */ }
+    };
 
     let spinning = false;
+    let angle = 0;
 
     const html = `
       <div class="sheet__title">
         <span>🤔 纠结转盘</span>
         <button class="mini-btn" type="button" data-act="close-sheet">✕</button>
       </div>
-      <div class="dc-result" id="dcResult">今天想吃点啥？<br/>让缘分替你决定 🎲</div>
-      <div class="field">
-        <div class="row" style="gap:8px;align-items:center">
-          <input class="input" id="dcInput" maxlength="16" placeholder="加一个选项，比如：火锅"
-                 style="flex:1;min-width:0" />
-          <button class="btn btn--primary btn--sm" type="button" id="dcAdd"
-                  style="flex:none;white-space:nowrap">添加</button>
+      <div class="dc-wrap">
+        <div class="dc-left">
+          <span class="field__label">选项库（点一下加到转盘）</span>
+          <div class="row" style="gap:8px;align-items:center;margin:8px 0 10px">
+            <input class="input" id="dcInput" maxlength="12" placeholder="比如：火锅" style="flex:1;min-width:0" />
+            <button class="btn btn--primary btn--sm" type="button" id="dcAdd" style="flex:none">添加</button>
+          </div>
+          <div class="dc-pool" id="dcPool"></div>
         </div>
-        <div class="dc-list" id="dcList"></div>
+        <div class="dc-right">
+          <div class="dc-wheel-box">
+            <canvas id="dcCanvas" width="440" height="440"></canvas>
+          </div>
+          <div class="dc-wheel-tags" id="dcTags"></div>
+          <button class="btn btn--primary btn--block" type="button" id="dcGo">🎯 开转！</button>
+        </div>
       </div>
-      <button class="btn btn--primary btn--block" type="button" id="dcGo">🎯 开始抽签</button>
-      <div class="drop-hint" style="margin-top:12px">选项会记住，下次直接抽；吃什么、去哪玩、今晚谁洗碗…都能抽</div>
+      <div class="dc-result" id="dcResult">吃什么、去哪玩、谁洗碗…<br/>让缘分替你决定 🎲</div>
     `;
     const body = UI.openSheet(html);
 
-    const resultEl = body.querySelector('#dcResult');
-    const listEl = body.querySelector('#dcList');
+    const poolEl = body.querySelector('#dcPool');
+    const tagsEl = body.querySelector('#dcTags');
     const inputEl = body.querySelector('#dcInput');
     const goBtn = body.querySelector('#dcGo');
+    const resultEl = body.querySelector('#dcResult');
+    const canvas = body.querySelector('#dcCanvas');
+    const ctx = canvas.getContext('2d');
 
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const COLORS = ['#ff8fab', '#ffd3e0', '#ff9ebe', '#ffe6ee', '#f97ba8', '#ffc9d8', '#ff86ae', '#fbdce6'];
 
-    function renderList(hi) {
-      listEl.innerHTML = options.length
-        ? options
+    function renderPool() {
+      poolEl.innerHTML = pool.length
+        ? pool
             .map(
               (o, i) =>
-                `<span class="dc-opt${i === hi ? ' is-hi' : ''}" data-del="${i}">${UI.escapeHtml(o)}${
-                  spinning ? '' : ' <b>✕</b>'
-                }</span>`
+                `<span class="dc-pool__opt${items.indexOf(o) >= 0 ? ' is-on' : ''}" data-add="${i}">${UI.escapeHtml(o)}<b data-pdel="${i}">✕</b></span>`
             )
             .join('')
-        : '<span class="dq-empty">先添加几个选项</span>';
+        : '<span class="dq-empty">还没有常用选项，先添加一个吧</span>';
     }
 
-    function save() {
-      localStorage.setItem('ld:decide', JSON.stringify(options));
+    function renderTags() {
+      tagsEl.innerHTML = items.length
+        ? items
+            .map((o, i) => `<span class="dc-tag" data-wdel="${i}">${UI.escapeHtml(o)}<b>✕</b></span>`)
+            .join('')
+        : '<span class="dq-empty">转盘空空的，点左边选项加进来</span>';
+    }
+
+    function drawWheel() {
+      const size = canvas.width;
+      const cx = size / 2;
+      const cy = size / 2;
+      const R = size / 2 - 10;
+      ctx.clearRect(0, 0, size, size);
+      const n = items.length;
+      if (!n) return;
+      const arc = (Math.PI * 2) / n;
+      for (let i = 0; i < n; i++) {
+        const a0 = i * arc - Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, R, a0, a0 + arc);
+        ctx.closePath();
+        ctx.fillStyle = COLORS[i % COLORS.length];
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,.95)';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+      }
+      for (let i = 0; i < n; i++) {
+        const mid = i * arc - Math.PI / 2 + arc / 2;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(mid);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#7a1f43';
+        ctx.font = 'bold 30px system-ui, -apple-system, sans-serif';
+        let t = items[i];
+        if (t.length > 6) t = t.slice(0, 6) + '…';
+        ctx.fillText(t, R * 0.58, 0);
+        ctx.restore();
+      }
+      ctx.beginPath();
+      ctx.arc(cx, cy, 34, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,107,157,.55)';
+      ctx.lineWidth = 5;
+      ctx.stroke();
+    }
+
+    function refresh() {
+      renderPool();
+      renderTags();
+      drawWheel();
     }
 
     body.addEventListener('click', (e) => {
-      const del = e.target.closest('[data-del]');
-      if (del && !spinning) {
-        options.splice(Number(del.dataset.del), 1);
-        save();
-        renderList(-1);
+      const pdel = e.target.closest('[data-pdel]');
+      if (pdel && !spinning) {
+        pool.splice(Number(pdel.dataset.pdel), 1);
+        savePool();
+        renderPool();
+        return;
+      }
+      const wdel = e.target.closest('[data-wdel]');
+      if (wdel && !spinning) {
+        items.splice(Number(wdel.dataset.wdel), 1);
+        saveWheel();
+        refresh();
+        return;
+      }
+      const add = e.target.closest('[data-add]');
+      if (add && !spinning) {
+        const o = pool[Number(add.dataset.add)];
+        if (!o) return;
+        if (items.indexOf(o) >= 0) {
+          UI.toast('「' + o + '」已经在转盘上啦');
+          return;
+        }
+        if (items.length >= 12) {
+          UI.toast('转盘最多 12 个选项');
+          return;
+        }
+        items.push(o);
+        saveWheel();
+        refresh();
+        UI.toast('已把「' + o + '」加到转盘 🎯');
         return;
       }
       if (e.target.closest('#dcAdd')) {
         const v = (inputEl.value || '').trim();
         if (!v) return;
-        if (options.length >= 12) {
-          UI.toast('选项太多啦，缘分也会选择困难');
+        if (pool.indexOf(v) >= 0) {
+          UI.toast('选项库里已经有「' + v + '」了');
           return;
         }
-        options.push(v);
+        if (pool.length >= 24) {
+          UI.toast('选项库满啦，先删掉一些吧');
+          return;
+        }
+        pool.push(v);
         inputEl.value = '';
-        save();
-        renderList(-1);
+        savePool();
+        renderPool();
         return;
       }
       if (e.target.closest('#dcGo')) spin();
     });
     body.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && e.target.id === 'dcInput') {
-        const add = body.querySelector('#dcAdd');
-        if (add) add.click();
+        const btn = body.querySelector('#dcAdd');
+        if (btn) btn.click();
       }
     });
 
-    async function spin() {
+    function spin() {
       if (spinning) return;
-      if (options.length < 2) {
+      if (items.length < 2) {
         UI.toast('至少要两个选项才能纠结呀');
         return;
       }
       spinning = true;
       goBtn.disabled = true;
-      const target = Math.floor(Math.random() * options.length);
-      // 像老虎机一样：先快后慢，最后正好停在预先随机好的那个上
-      const total = options.length * 2 + target + 1;
+      resultEl.innerHTML = '转盘转转转…';
 
-      for (let i = 0; i < total; i++) {
-        const idx = i % options.length;
-        renderList(idx);
-        resultEl.innerHTML = `是不是想吃 <b class="dc-now">${UI.escapeHtml(options[idx])}</b>？`;
-        await sleep(60 + Math.pow(i / total, 2) * 340);
-      }
+      const target = Math.floor(Math.random() * items.length);
+      const arcDeg = 360 / items.length;
+      /* 选项 i 画在从顶部开始第 i 块；让它的中心停在指针（顶部）下 */
+      const segCenter = target * arcDeg + arcDeg / 2;
+      const jitter = (Math.random() - 0.5) * arcDeg * 0.6;
+      const targetDeg = (360 - ((segCenter + jitter) % 360)) % 360;
+      angle = angle + 360 * 5 + (((targetDeg - (angle % 360)) % 360) + 360) % 360;
+      canvas.style.transform = 'rotate(' + angle + 'deg)';
 
-      const pick = options[target];
-      resultEl.innerHTML = `<div class="dc-final">🎯<br/>就去 <b>${UI.escapeHtml(pick)}</b>！</div>`;
-      renderList(target);
-      save();
-      spinning = false;
-      goBtn.disabled = false;
-      UI.toast('缘分已定：' + pick);
+      setTimeout(() => {
+        const pick = items[target];
+        resultEl.innerHTML = `<div class="dc-final">🎯<br/>就去 <b>${UI.escapeHtml(pick)}</b>！</div>`;
+        saveWheel();
+        spinning = false;
+        goBtn.disabled = false;
+        UI.toast('缘分已定：' + pick);
+      }, 4250);
     }
 
-    renderList(-1);
+    refresh();
   }
 
   /* ---------------- 悄悄话·想你 ---------------- */
@@ -1552,6 +1653,7 @@
         (c) => `
         <div class="cmt-item">
           <div class="cmt-item__head">
+            ${avatarHtml(c.avatar, c.name, 'avatar--xs')}
             <b>${UI.escapeHtml(c.name || 'Ta')}</b>
             <span>${cmtTime(c.ts)}</span>
             ${c.uid === myId ? `<button class="mini-btn" type="button" data-cmt-del="${UI.escapeHtml(c.id)}" title="删除">✕</button>` : ''}
@@ -1572,6 +1674,7 @@
         <button class="btn btn--primary" type="button" id="cmtSend" style="flex:none">发送</button>
       </div>
     `);
+    hydrateImages(body);
 
     const send = async () => {
       const input = body.querySelector('#cmtInput');

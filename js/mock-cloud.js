@@ -112,7 +112,7 @@
     };
   }
 
-  function publicRecord(r) {
+  function publicRecord(r, avatarMap) {
     return {
       id: r._id,
       authorId: r.authorId || '',
@@ -126,10 +126,26 @@
       tags: r.tags || [],
       images: r.images || [],
       likes: r.likes || [],
-      comments: (r.comments || []).slice(-100),
+      comments: (r.comments || []).slice(-100).map(function (c) {
+        return Object.assign({}, c, { avatar: (avatarMap && avatarMap[c.uid]) || null });
+      }),
       createdAt: r.createdAt || 0,
       updatedAt: r.updatedAt || 0
     };
+  }
+
+  function commentAvatarMap(b) {
+    const map = {};
+    if (!b) return map;
+    const other = (b.members || []).filter((x) => x !== b.createdBy)[0];
+    if (b.createdBy && b.myAvatar) map[b.createdBy] = b.myAvatar;
+    if (other && b.partnerAvatar) map[other] = b.partnerAvatar;
+    (b.members || []).forEach((uid) => {
+      if (map[uid]) return;
+      const usr = db.users.filter((x) => x._id === uid)[0];
+      if (usr && usr.avatar) map[uid] = usr.avatar;
+    });
+    return map;
   }
 
   function consumeLocalCode(email, code, scene) {
@@ -587,7 +603,7 @@
       rec.comments.push(c);
       if (rec.comments.length > 200) rec.comments = rec.comments.slice(-200);
       save();
-      return { comment: c };
+      return { comment: Object.assign({}, c, { avatar: commentAvatarMap(b)[c.uid] || null }) };
     },
 
     async delComment(p) {
@@ -610,7 +626,7 @@
         .filter((r) => r.bookId === b._id)
         .sort((a, c) => (a.date < c.date ? 1 : a.date > c.date ? -1 : (c.createdAt || 0) - (a.createdAt || 0)))
         .slice(0, 500)
-        .map(publicRecord);
+        .map((r) => publicRecord(r, commentAvatarMap(b)));
       return { book: publicBook(b), records: list };
     },
 
@@ -639,7 +655,7 @@
         Object.assign(old, doc);
         old.createdAt = old.createdAt || now();
         save();
-        return { record: publicRecord(old) };
+        return { record: publicRecord(old, commentAvatarMap(b)) };
       }
       const rec = Object.assign({ _id: 'r_' + rand(10), createdAt: now() }, doc);
       db.records.push(rec);
