@@ -793,6 +793,48 @@ img { display: block; max-width: 100%; }
 .wish-row__text { font-size: 13.5px; font-weight: 600; line-height: 1.5; }
 .wish-row__meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
 
+/* ---------- 纠结转盘 ---------- */
+.dc-result {
+  min-height: 86px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
+  font-size: 13.5px; line-height: 1.7; color: var(--text-dim);
+  background: linear-gradient(135deg, var(--brand-soft), var(--bg));
+  border-radius: var(--r-md);
+  padding: 16px; margin-bottom: 14px;
+}
+.dc-now {
+  color: var(--brand);
+  font-size: 17px;
+  padding: 0 2px;
+}
+.dc-final {
+  font-size: 13px; color: var(--text-dim); line-height: 1.8;
+}
+.dc-final b {
+  display: inline-block;
+  font-size: 24px; font-weight: 800;
+  color: var(--brand);
+  margin-top: 2px;
+}
+.dc-list {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-top: 10px; min-height: 34px;
+}
+.dc-opt {
+  font-size: 12.5px; font-weight: 600;
+  padding: 7px 12px; border-radius: 999px;
+  background: var(--card); border: 1.5px solid var(--border);
+  cursor: pointer; user-select: none;
+  transition: transform .12s ease;
+}
+.dc-opt b { color: var(--text-dim); font-weight: 600; margin-left: 2px; }
+.dc-opt.is-hi {
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  color: #fff; border-color: transparent;
+  transform: scale(1.08);
+}
+
 /* ---------- 语音日记 ---------- */
 .voice-play {
   display: inline-flex; align-items: center; gap: 6px;

@@ -294,6 +294,17 @@
       </div>
 
       <div class="section">
+        <div class="card" data-act="decide" style="display:flex;align-items:center;gap:12px;cursor:pointer">
+          <div style="font-size:24px">🤔</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13.5px;font-weight:700">选择困难症发作？</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-top:2px">吃什么、去哪玩…让转盘帮你们决定</div>
+          </div>
+          <span style="color:var(--text-dim)">›</span>
+        </div>
+      </div>
+
+      <div class="section">
         <div class="section__head">
           <div class="section__title">最近的小日子</div>
           <button class="section__more" type="button" data-act="go" data-tab="timeline">全部 ›</button>
@@ -1275,6 +1286,125 @@
       if (a === 'logout') return AuthView.signOut();
       if (a === 'security') return openSecurity();
     });
+  }
+
+  /* ---------------- 纠结转盘 ---------------- */
+
+  function openDecision() {
+    let options = [];
+    try {
+      const saved = JSON.parse(localStorage.getItem('ld:decide') || 'null');
+      if (Array.isArray(saved) && saved.length) options = saved.filter((x) => typeof x === 'string');
+    } catch (err) {
+      /* 忽略 */
+    }
+    if (!options.length) options = ['火锅', '烧烤', '寿司'];
+
+    let spinning = false;
+
+    const html = `
+      <div class="sheet__title">
+        <span>🤔 纠结转盘</span>
+        <button class="mini-btn" type="button" data-act="close-sheet">✕</button>
+      </div>
+      <div class="dc-result" id="dcResult">今天想吃点啥？<br/>让缘分替你决定 🎲</div>
+      <div class="field">
+        <div class="row" style="gap:8px;align-items:center">
+          <input class="input" id="dcInput" maxlength="16" placeholder="加一个选项，比如：火锅"
+                 style="flex:1;min-width:0" />
+          <button class="btn btn--primary btn--sm" type="button" id="dcAdd"
+                  style="flex:none;white-space:nowrap">添加</button>
+        </div>
+        <div class="dc-list" id="dcList"></div>
+      </div>
+      <button class="btn btn--primary btn--block" type="button" id="dcGo">🎯 开始抽签</button>
+      <div class="drop-hint" style="margin-top:12px">选项会记住，下次直接抽；吃什么、去哪玩、今晚谁洗碗…都能抽</div>
+    `;
+    const body = UI.openSheet(html);
+
+    const resultEl = body.querySelector('#dcResult');
+    const listEl = body.querySelector('#dcList');
+    const inputEl = body.querySelector('#dcInput');
+    const goBtn = body.querySelector('#dcGo');
+
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    function renderList(hi) {
+      listEl.innerHTML = options.length
+        ? options
+            .map(
+              (o, i) =>
+                `<span class="dc-opt${i === hi ? ' is-hi' : ''}" data-del="${i}">${UI.escapeHtml(o)}${
+                  spinning ? '' : ' <b>✕</b>'
+                }</span>`
+            )
+            .join('')
+        : '<span class="dq-empty">先添加几个选项</span>';
+    }
+
+    function save() {
+      localStorage.setItem('ld:decide', JSON.stringify(options));
+    }
+
+    body.addEventListener('click', (e) => {
+      const del = e.target.closest('[data-del]');
+      if (del && !spinning) {
+        options.splice(Number(del.dataset.del), 1);
+        save();
+        renderList(-1);
+        return;
+      }
+      if (e.target.closest('#dcAdd')) {
+        const v = (inputEl.value || '').trim();
+        if (!v) return;
+        if (options.length >= 12) {
+          UI.toast('选项太多啦，缘分也会选择困难');
+          return;
+        }
+        options.push(v);
+        inputEl.value = '';
+        save();
+        renderList(-1);
+        return;
+      }
+      if (e.target.closest('#dcGo')) spin();
+    });
+    body.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.id === 'dcInput') {
+        const add = body.querySelector('#dcAdd');
+        if (add) add.click();
+      }
+    });
+
+    async function spin() {
+      if (spinning) return;
+      if (options.length < 2) {
+        UI.toast('至少要两个选项才能纠结呀');
+        return;
+      }
+      spinning = true;
+      goBtn.disabled = true;
+      const target = Math.floor(Math.random() * options.length);
+      // 像老虎机一样：先快后慢，最后正好停在预先随机好的那个上
+      const total = options.length * 2 + target + 1;
+
+      for (let i = 0; i < total; i++) {
+        const idx = i % options.length;
+        renderList(idx);
+        resultEl.innerHTML = `是不是想吃 <b class="dc-now">${UI.escapeHtml(options[idx])}</b>？`;
+        await sleep(60 + Math.pow(i / total, 2) * 340);
+      }
+
+      const pick = options[target];
+      resultEl.innerHTML = `<div class="dc-final">🎯<br/>就去 <b>${UI.escapeHtml(pick)}</b>！</div>`;
+      renderList(target);
+      save();
+      spinning = false;
+      goBtn.disabled = false;
+      UI.toast('缘分已定：' + pick);
+    }
+
+    renderList(-1);
   }
 
   /* ---------------- 悄悄话·想你 ---------------- */
@@ -2538,6 +2668,7 @@
     if (act === 'install') return tryInstall();
     if (act === 'download-apk') return downloadApk();
     if (act === 'send-miss') return sendMiss();
+    if (act === 'decide') return openDecision();
     if (act === 'daily-open') return openDailyAnswer();
     if (act === 'daily-history') return openDailyHistory();
     if (act === 'wishes') return openWishes();
