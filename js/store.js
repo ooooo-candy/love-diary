@@ -214,6 +214,16 @@
 
     getRecord(id) { return state.records.filter((r) => r.id === id)[0] || null; },
 
+    /* 点赞/评论等小改动：本地先更新，调用方再和云端对账 */
+    patchRecord(id, patch) {
+      const rec = state.records.filter((r) => r.id === id)[0];
+      if (!rec) return null;
+      Object.assign(rec, patch);
+      persistCache();
+      emit();
+      return rec;
+    },
+
     async upsertRecord(rec) {
       const payload = {
         id: rec.id || null,

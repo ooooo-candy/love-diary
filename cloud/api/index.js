@@ -397,6 +397,8 @@ function publicRecord(r) {
     tags: r.tags || [],
     images: r.images || [],
     audio: r.audio || null,
+    likes: r.likes || [],
+    comments: (r.comments || []).slice(-100),
     createdAt: r.createdAt || 0,
     updatedAt: r.updatedAt || 0
   };
@@ -1091,9 +1093,79 @@ const handlers = {
     const m = b.miss && b.miss.date === today ? b.miss : { date: today, counts: {}, seen: {} };
     b.miss = m;
     m.counts[u._id] = (m.counts[u._id] || 0) + 1;
+
+    /* 记一条「想你」事件，对方轮询到就在屏幕上飘爱心 */
+    const ev = { id: 'm_' + Date.now().toString(36) + rand(6), from: u._id, name: u.nickname || u.username, ts: Date.now() };
+    b.missEvents = ((b.missEvents || []).concat([ev])).slice(-50);
+
     await saveDB(db);
     const partnerId = (b.members || []).filter((x) => x !== u._id)[0] || '';
-    return { myCount: m.counts[u._id] || 0, partnerCount: m.counts[partnerId] || 0 };
+    return { myCount: m.counts[u._id] || 0, partnerCount: m.counts[partnerId] || 0, eventTs: ev.ts };
+  },
+
+  /* 轮询新的「想你」事件：前端传入上次看到的最新时间戳 */
+  async checkMiss(payload) {
+    const db = await loadDB();
+    const u = userByToken(db, payload.uid, payload.token);
+    const b = bookOfUser(db, u);
+    if (!b) fail('还没有加入任何本子', 'NO_BOOK');
+    const since = Number(payload.since) || 0;
+    const events = (b.missEvents || []).filter((e) => e.ts > since);
+    return { events: events, now: Date.now() };
+  },
+
+  /* ---------- 点赞 / 评论 ---------- */
+
+  async toggleLike(payload) {
+    const db = await loadDB();
+    const u = userByToken(db, payload.uid, payload.token);
+    const b = bookOfUser(db, u);
+    const rec = db.records.filter((r) => r._id === payload.id)[0];
+    if (!b || !rec || rec.bookId !== b._id) fail('记录不存在', 'NO_RECORD');
+
+    rec.likes = rec.likes || [];
+    const at = rec.likes.indexOf(u._id);
+    if (at >= 0) rec.likes.splice(at, 1);
+    else rec.likes.push(u._id);
+    await saveDB(db);
+    return { likes: rec.likes };
+  },
+
+  async addComment(payload) {
+    const db = await loadDB();
+    const u = userByToken(db, payload.uid, payload.token);
+    const b = bookOfUser(db, u);
+    const rec = db.records.filter((r) => r._id === payload.id)[0];
+    if (!b || !rec || rec.bookId !== b._id) fail('记录不存在', 'NO_RECORD');
+
+    const text = String(payload.text || '').trim();
+    if (!text) fail('先写点什么吧', 'EMPTY');
+    rec.comments = rec.comments || [];
+    const c = {
+      id: 'c_' + Date.now().toString(36) + rand(6),
+      uid: u._id,
+      name: u.nickname || u.username,
+      text: text.slice(0, 500),
+      ts: Date.now()
+    };
+    rec.comments.push(c);
+    if (rec.comments.length > 200) rec.comments = rec.comments.slice(-200);
+    await saveDB(db);
+    return { comment: c };
+  },
+
+  async delComment(payload) {
+    const db = await loadDB();
+    const u = userByToken(db, payload.uid, payload.token);
+    const b = bookOfUser(db, u);
+    const rec = db.records.filter((r) => r._id === payload.id)[0];
+    if (!b || !rec || rec.bookId !== b._id) fail('记录不存在', 'NO_RECORD');
+
+    const before = (rec.comments || []).length;
+    rec.comments = (rec.comments || []).filter((c) => !(c.id === payload.cid && c.uid === u._id));
+    if (rec.comments.length === before) fail('只能删除自己写的评论', 'FORBIDDEN');
+    await saveDB(db);
+    return { ok: true };
   },
 
   async getFileUrl(payload) {

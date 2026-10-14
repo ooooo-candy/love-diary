@@ -125,6 +125,8 @@
       audio: r.audio || null,
       tags: r.tags || [],
       images: r.images || [],
+      likes: r.likes || [],
+      comments: (r.comments || []).slice(-100),
       createdAt: r.createdAt || 0,
       updatedAt: r.updatedAt || 0
     };
@@ -545,9 +547,59 @@
       const m = b.miss && b.miss.date === today ? b.miss : { date: today, counts: {}, seen: {} };
       b.miss = m;
       m.counts[u._id] = (m.counts[u._id] || 0) + 1;
+      const ev = { id: 'm_' + rand(8), from: u._id, name: u.nickname || u.username, ts: now() };
+      b.missEvents = ((b.missEvents || []).concat([ev])).slice(-50);
       save();
       const partnerId = (b.members || []).filter((x) => x !== u._id)[0] || '';
-      return { myCount: m.counts[u._id] || 0, partnerCount: m.counts[partnerId] || 0 };
+      return { myCount: m.counts[u._id] || 0, partnerCount: m.counts[partnerId] || 0, eventTs: ev.ts };
+    },
+
+    async checkMiss(p) {
+      const u = findUser(p.uid, p.token);
+      const b = bookOfUser(u);
+      if (!b) fail('还没有加入任何本子', 'NO_BOOK');
+      const since = Number(p.since) || 0;
+      return { events: (b.missEvents || []).filter((e) => e.ts > since), now: now() };
+    },
+
+    async toggleLike(p) {
+      const u = findUser(p.uid, p.token);
+      const b = bookOfUser(u);
+      const rec = db.records.filter((r) => r._id === p.id)[0];
+      if (!b || !rec || rec.bookId !== b._id) fail('记录不存在', 'NO_RECORD');
+      rec.likes = rec.likes || [];
+      const at = rec.likes.indexOf(u._id);
+      if (at >= 0) rec.likes.splice(at, 1);
+      else rec.likes.push(u._id);
+      save();
+      return { likes: rec.likes };
+    },
+
+    async addComment(p) {
+      const u = findUser(p.uid, p.token);
+      const b = bookOfUser(u);
+      const rec = db.records.filter((r) => r._id === p.id)[0];
+      if (!b || !rec || rec.bookId !== b._id) fail('记录不存在', 'NO_RECORD');
+      const text = String(p.text || '').trim();
+      if (!text) fail('先写点什么吧', 'EMPTY');
+      rec.comments = rec.comments || [];
+      const c = { id: 'c_' + rand(8), uid: u._id, name: u.nickname || u.username, text: text.slice(0, 500), ts: now() };
+      rec.comments.push(c);
+      if (rec.comments.length > 200) rec.comments = rec.comments.slice(-200);
+      save();
+      return { comment: c };
+    },
+
+    async delComment(p) {
+      const u = findUser(p.uid, p.token);
+      const b = bookOfUser(u);
+      const rec = db.records.filter((r) => r._id === p.id)[0];
+      if (!b || !rec || rec.bookId !== b._id) fail('记录不存在', 'NO_RECORD');
+      const before = (rec.comments || []).length;
+      rec.comments = (rec.comments || []).filter((c) => !(c.id === p.cid && c.uid === u._id));
+      if (rec.comments.length === before) fail('只能删除自己写的评论', 'FORBIDDEN');
+      save();
+      return { ok: true };
     },
 
     async listRecords(p) {

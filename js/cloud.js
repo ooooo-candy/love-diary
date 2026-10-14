@@ -266,7 +266,11 @@
       addWish: (text) => Cloud.call('addWish', { text: text }),
       toggleWish: (id) => Cloud.call('toggleWish', { id: id }),
       removeWish: (id) => Cloud.call('removeWish', { id: id }),
-      sendMiss: () => Cloud.call('sendMiss', {})
+      sendMiss: () => Cloud.call('sendMiss', {}),
+      checkMiss: (since) => Cloud.call('checkMiss', { since: since }),
+      toggleLike: (id) => Cloud.call('toggleLike', { id: id }),
+      addComment: (id, text) => Cloud.call('addComment', { id: id, text: text }),
+      delComment: (id, cid) => Cloud.call('delComment', { id: id, cid: cid })
     }
   };
 

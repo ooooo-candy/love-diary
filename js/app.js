@@ -378,7 +378,24 @@
         }
         ${grid}
         ${tags ? `<div class="record__tags">${tags}</div>` : ''}
+        ${recordFootHtml(rec)}
       </article>`;
+  }
+
+  function recordFootHtml(rec) {
+    const myId = (Cloud.session && Cloud.session.uid) || '';
+    const likes = rec.likes || [];
+    const liked = likes.indexOf(myId) >= 0;
+    const cmts = (rec.comments || []).length;
+    return `
+      <div class="rec-foot">
+        <button class="rec-foot__btn${liked ? ' is-liked' : ''}" type="button" data-act="like" data-id="${UI.escapeHtml(rec.id)}">
+          ${liked ? '❤️' : '🤍'}<span>${likes.length ? likes.length : '喜欢'}</span>
+        </button>
+        <button class="rec-foot__btn" type="button" data-act="comments" data-id="${UI.escapeHtml(rec.id)}">
+          💬<span>${cmts ? cmts : '评论'}</span>
+        </button>
+      </div>`;
   }
 
   /* ---------------- 视图：时光轴 ---------------- */
@@ -559,7 +576,7 @@
             <div class="invite__code">${UI.escapeHtml(p.code || '------')}</div>
             <span class="invite__hint">点击复制，或生成二维码让 TA 扫一扫加入</span>
           </div>
-          ${joined ? '' : '<button class="btn btn--ghost btn--block btn--sm" type="button" data-act="show-qr" style="margin-top:10px">📱 生成邀请二维码</button>'}
+          <button class="btn btn--ghost btn--block btn--sm" type="button" data-act="show-qr" style="margin-top:10px">📱 生成邀请二维码</button>
           <div class="setting-row__hint" style="margin-top:10px">
             ${joined ? '✔ TA 已经加入了，你们正在共享同一本记录' : '还没有人加入，等 TA 用邀请码进来'}
           </div>
@@ -1413,6 +1430,7 @@
   async function sendMiss() {
     try {
       const r = await Cloud.api.sendMiss();
+      if (r.eventTs) setLastMissTs(Math.max(lastMissTs(), r.eventTs));
       const card = document.querySelector('.love-card');
       if (card) {
         const hearts = card.querySelector('.love-card__hearts');
@@ -1434,6 +1452,161 @@
     } catch (err) {
       UI.toast(err.message || '发送失败');
     }
+  }
+
+  /* ---------------- 想你：对方屏幕飘爱心 ---------------- */
+
+  function lastMissTs() {
+    try { return Number(localStorage.getItem('ld:lastMissTs')) || 0; } catch (err) { return 0; }
+  }
+  function setLastMissTs(v) {
+    try { localStorage.setItem('ld:lastMissTs', String(v || 0)); } catch (err) { /* 忽略 */ }
+  }
+
+  function missRain(n) {
+    const box = document.createElement('div');
+    box.className = 'miss-rain';
+    const emojis = ['💗', '💖', '💕', '❤️', '💘'];
+    for (let i = 0; i < n; i++) {
+      const s = document.createElement('span');
+      s.className = 'mr-heart';
+      s.textContent = emojis[i % emojis.length];
+      s.style.left = 4 + Math.random() * 92 + '%';
+      s.style.animationDelay = (Math.random() * 1.8).toFixed(2) + 's';
+      s.style.fontSize = 16 + Math.round(Math.random() * 20) + 'px';
+      box.appendChild(s);
+    }
+    document.body.appendChild(box);
+    setTimeout(() => box.remove(), 5600);
+  }
+
+  let missTimer = null;
+  let missPolling = false;
+
+  async function pollMiss() {
+    if (missPolling || !Store.isSignedIn() || !Store.getBook()) return;
+    missPolling = true;
+    try {
+      const since = lastMissTs();
+      const r = await Cloud.api.checkMiss(since);
+      const myId = (Cloud.session && Cloud.session.uid) || '';
+      let maxTs = since;
+      const fromPartner = [];
+      (r.events || []).forEach((e) => {
+        if (e.ts > maxTs) maxTs = e.ts;
+        if (e.from !== myId) fromPartner.push(e);
+      });
+      setLastMissTs(maxTs);
+      if (fromPartner.length) {
+        missRain(Math.min(fromPartner.length, 14));
+        const who = fromPartner[fromPartner.length - 1].name || 'TA';
+        UI.toast('💗 ' + who + ' 想你了' + (fromPartner.length > 1 ? ' ×' + fromPartner.length : ''));
+      }
+    } catch (err) { /* 静默轮询 */ }
+    missPolling = false;
+  }
+
+  function startMissPoll() {
+    if (missTimer) return;
+    pollMiss();
+    missTimer = setInterval(pollMiss, 15000);
+  }
+  function stopMissPoll() {
+    clearInterval(missTimer);
+    missTimer = null;
+  }
+
+  /* ---------------- 点赞 / 评论 ---------------- */
+
+  function cmtTime(ts) {
+    const d = new Date(ts || Date.now());
+    const pad = (x) => (x < 10 ? '0' + x : '' + x);
+    return pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  async function toggleLike(id) {
+    const rec = Store.getRecord(id);
+    if (!rec) return;
+    const myId = (Cloud.session && Cloud.session.uid) || '';
+    const likes = (rec.likes || []).slice();
+    const at = likes.indexOf(myId);
+    if (at >= 0) likes.splice(at, 1);
+    else likes.push(myId);
+    Store.patchRecord(id, { likes: likes });
+    render();
+    try {
+      const r = await Cloud.api.toggleLike(id);
+      Store.patchRecord(id, { likes: r.likes || [] });
+      render();
+    } catch (err) {
+      UI.toast(err.message || '点赞失败');
+    }
+  }
+
+  function openComments(id) {
+    const rec = Store.getRecord(id);
+    if (!rec) return;
+    const myId = (Cloud.session && Cloud.session.uid) || '';
+    const list = (rec.comments || [])
+      .map(
+        (c) => `
+        <div class="cmt-item">
+          <div class="cmt-item__head">
+            <b>${UI.escapeHtml(c.name || 'Ta')}</b>
+            <span>${cmtTime(c.ts)}</span>
+            ${c.uid === myId ? `<button class="mini-btn" type="button" data-cmt-del="${UI.escapeHtml(c.id)}" title="删除">✕</button>` : ''}
+          </div>
+          <div class="cmt-item__text">${UI.escapeHtml(c.text)}</div>
+        </div>`
+      )
+      .join('');
+
+    const body = UI.openSheet(`
+      <div class="sheet__title">
+        <span>评论（${(rec.comments || []).length}）</span>
+        <button class="mini-btn" type="button" data-act="close-sheet">✕</button>
+      </div>
+      <div class="cmt-list">${list || '<div class="empty__desc" style="padding:14px 0">还没有评论，来抢沙发吧</div>'}</div>
+      <div class="row cmt-row">
+        <input class="input" id="cmtInput" maxlength="500" placeholder="写点甜甜的话…" />
+        <button class="btn btn--primary" type="button" id="cmtSend" style="flex:none">发送</button>
+      </div>
+    `);
+
+    const send = async () => {
+      const input = body.querySelector('#cmtInput');
+      const text = (input.value || '').trim();
+      if (!text) return UI.toast('先写点什么吧');
+      const btn = body.querySelector('#cmtSend');
+      btn.disabled = true;
+      try {
+        const r = await Cloud.api.addComment(id, text);
+        const cur = Store.getRecord(id);
+        Store.patchRecord(id, { comments: ((cur && cur.comments) || []).concat([r.comment]) });
+        render();
+        openComments(id);
+      } catch (err) {
+        btn.disabled = false;
+        UI.toast(err.message || '发送失败');
+      }
+    };
+    body.querySelector('#cmtSend').addEventListener('click', send);
+    body.querySelector('#cmtInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') send();
+    });
+    body.addEventListener('click', async (e) => {
+      const del = e.target.closest('[data-cmt-del]');
+      if (!del) return;
+      try {
+        await Cloud.api.delComment(id, del.dataset.cmtDel);
+        const cur = Store.getRecord(id);
+        Store.patchRecord(id, { comments: (cur.comments || []).filter((c) => c.id !== del.dataset.cmtDel) });
+        render();
+        openComments(id);
+      } catch (err) {
+        UI.toast(err.message || '删除失败');
+      }
+    });
   }
 
   /* ---------------- 每日一问 ---------------- */
@@ -2394,21 +2567,34 @@
     return location.origin + location.pathname + '?code=' + code;
   }
 
-  function showInviteQR() {
+  /* 二维码库偶尔没加载上（缓存/时序）时动态补一次 */
+  function ensureQrLib() {
+    if (typeof qrcode === 'function') return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const s = document.createElement('script');
+      s.src = 'js/vendor/qrcode.js';
+      s.onload = () => resolve(typeof qrcode === 'function');
+      s.onerror = () => resolve(false);
+      document.head.appendChild(s);
+    });
+  }
+
+  async function showInviteQR() {
     const p = Store.getProfile();
     const code = p.code;
     if (!code) return UI.toast('还没有邀请码');
+    const ok = await ensureQrLib();
+    if (!ok) return UI.toast('二维码组件加载失败，请刷新页面重试');
 
     let dataUrl = '';
-    if (typeof qrcode === 'function') {
-      try {
-        const qr = qrcode(0, 'M');
-        qr.addData(inviteLink(code));
-        qr.make();
-        dataUrl = qr.createDataURL(10, 4);
-      } catch (err) { /* 生成失败则只展示邀请码 */ }
-    }
+    try {
+      const qr = qrcode(0, 'M');
+      qr.addData(inviteLink(code));
+      qr.make();
+      dataUrl = qr.createDataURL(10, 4);
+    } catch (err) { /* 生成失败则只展示邀请码 */ }
 
+    const joined = (p.members || []).length >= 2;
     const body = UI.openSheet(`
       <div class="sheet__title">
         <span>邀请 TA 加入</span>
@@ -2423,7 +2609,7 @@
         <button class="btn btn--ghost" type="button" data-qr="link" style="flex:1">复制链接</button>
         <button class="btn btn--ghost" type="button" data-qr="code" style="flex:1">复制邀请码</button>
       </div>
-      <p class="record__note">每个本子仅限你们两个人加入，人满后邀请码会自动失效；TA 登录后点「用邀请码加入」即可（也可以直接扫上面的码）。</p>
+      <p class="record__note">${joined ? '✔ TA 已经加入了，你们正在共享同一本。' : '每个本子仅限你们两个人加入，人满后邀请码自动失效。'}TA 登录后点「用邀请码加入」或直接扫码即可。</p>
     `);
     body.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-qr]');
@@ -2608,10 +2794,12 @@
     document.getElementById('view-auth').hidden = true;
     state.tab = 'home';
     render();
+    startMissPoll();
   }
 
   function reset() {
     document.documentElement.classList.add('is-guest');
+    stopMissPoll();
   }
 
   async function refresh() {
@@ -2722,6 +2910,8 @@
     if (act === 'daily-history') return openDailyHistory();
     if (act === 'wishes') return openWishes();
     if (act === 'play-voice') return playVoice(el);
+    if (act === 'like') return toggleLike(el.dataset.id);
+    if (act === 'comments') return openComments(el.dataset.id);
     if (act === 'force-update') return forceUpdate();
     if (act === 'import') return importBackup();
     if (act === 'clear') return clearAll();
