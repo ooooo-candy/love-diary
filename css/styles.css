@@ -924,6 +924,35 @@ html.is-guest .main { padding-top: 8px; }
 .invite__code { font-size: 30px; font-weight: 800; letter-spacing: 8px; margin: 4px 0 2px; }
 .invite__hint { font-size: 11px; opacity: .85; }
 
+/* ---------- 邀请二维码 & 扫一扫 ---------- */
+.qr-card { text-align: center; padding: 22px 16px; }
+.qr-img {
+  display: block; margin: 0 auto;
+  width: 216px; height: 216px;
+  image-rendering: pixelated;
+  background: #fff;
+  border-radius: 14px; padding: 10px;
+  box-shadow: var(--shadow);
+}
+.scan-box {
+  position: relative;
+  width: 100%; aspect-ratio: 1 / 1; max-height: 46vh;
+  border-radius: 16px; overflow: hidden;
+  background: #14101a;
+}
+.scan-box video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scan-box__frame {
+  position: absolute; inset: 16%;
+  border: 2px solid rgba(255, 255, 255, .9);
+  border-radius: 14px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, .28);
+  animation: scanPulse 2.2s ease-in-out infinite;
+}
+@keyframes scanPulse {
+  0%, 100% { opacity: .9 }
+  50% { opacity: .5 }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

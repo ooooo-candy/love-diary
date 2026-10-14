@@ -41,4 +41,6 @@
     <!-- 网页定位（写记录时一键定位地点） -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- 扫一扫识别邀请二维码 -->
+    <uses-permission android:name="android.permission.CAMERA" />
 </manifest>

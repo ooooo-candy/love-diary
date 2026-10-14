@@ -2,10 +2,27 @@
 (function () {
   'use strict';
 
+  /* 扫码 / 邀请链接进入：?code=XXXXXX 暂存起来，登录后自动填入 */
+  let pendingCode = '';
+  try {
+    const m = location.search.match(/[?&]code=([A-Za-z0-9]{4,12})/);
+    if (m) {
+      pendingCode = m[1].toUpperCase();
+      localStorage.setItem('ld:pendingCode', pendingCode);
+      history.replaceState(null, '', location.pathname);
+    } else {
+      pendingCode = localStorage.getItem('ld:pendingCode') || '';
+    }
+  } catch (err) { /* 忽略 */ }
+  function clearPendingCode() {
+    pendingCode = '';
+    try { localStorage.removeItem('ld:pendingCode'); } catch (err) { /* 忽略 */ }
+  }
+
   let authMode = 'login';        // login | register | forgot
   let signupMode = 'username';   // username | email
   let forgotMode = 'answer';     // answer | code
-  let joinStep = 'create';       // create | join
+  let joinStep = pendingCode ? 'join' : 'create'; // create | join
   let lastIdentifier = '';
   let pickedQuestion = '';
   let askedQuestion = '';
@@ -214,7 +231,7 @@
           createOn ? '创建你们的本子' : '加入 TA 的本子',
           createOn
             ? '填好你们的信息，创建后会生成一个邀请码<br/>把邀请码发给 TA，就能一起写同一本啦'
-            : '输入 TA 给你的 6 位邀请码<br/>加入后你们看到的记录会完全一样'
+            : '输入 TA 给你的 6 位邀请码，或扫 TA 的二维码<br/>加入后你们看到的记录会完全一样'
         )}
         <div class="card auth__card">
           <div class="chips" style="margin:0 0 14px;padding:0">
@@ -241,9 +258,12 @@
             <div class="field">
               <label class="field__label" for="obCode">邀请码</label>
               <input class="input" id="obCode" maxlength="6" placeholder="6 位邀请码"
-                     style="text-transform:uppercase;letter-spacing:4px;text-align:center;font-size:20px;font-weight:800" />
+                     style="text-transform:uppercase;letter-spacing:4px;text-align:center;font-size:20px;font-weight:800"
+                     value="${UI.escapeHtml(pendingCode)}" />
             </div>
-            <button class="btn btn--primary btn--block" id="obJoin" type="button">加入</button>`
+            ${pendingCode ? '<div class="drop-hint" style="margin-bottom:10px">已从二维码自动填入邀请码，确认无误后点「加入」</div>' : ''}
+            <button class="btn btn--primary btn--block" id="obJoin" type="button">加入</button>
+            <button class="btn btn--ghost btn--block btn--sm" id="obScan" type="button" style="margin-top:10px">📷 扫一扫 TA 的二维码</button>`
           }
           <button class="btn btn--ghost btn--block btn--sm" id="obLogout" type="button" style="margin-top:10px">换个账号登录</button>
         </div>
@@ -515,6 +535,7 @@
     busy(btn, '加入中…');
     try {
       await Cloud.api.joinBook(code);
+      clearPendingCode();
       await Store.sync();
       UI.toast('加入成功，你们现在共享同一本啦 ❤');
       App.enterApp();
@@ -522,6 +543,102 @@
       idle(btn, '加入');
       UI.toast(err.message || '加入失败');
     }
+  }
+
+  /* ---------------- 扫一扫识别邀请二维码 ---------------- */
+
+  let scanStop = null;
+
+  function openScanner() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return UI.toast('这个环境不支持摄像头，请手动输入邀请码');
+    }
+    if (typeof jsQR !== 'function') {
+      return UI.toast('扫码组件还没加载好，请刷新后重试');
+    }
+
+    const body = UI.openSheet(
+      `
+      <div class="sheet__title">
+        <span>扫一扫加入</span>
+        <button class="mini-btn" type="button" data-act="close-sheet">✕</button>
+      </div>
+      <div class="scan-box">
+        <video id="scanVideo" playsinline muted></video>
+        <div class="scan-box__frame"></div>
+      </div>
+      <div class="drop-hint" style="text-align:center;margin-top:12px">对准 TA 的邀请二维码，识别后自动填入</div>
+      `,
+      { onClose: () => { if (scanStop) scanStop(); } }
+    );
+
+    const video = body.querySelector('#scanVideo');
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    let stream = null;
+    let raf = 0;
+    let stopped = false;
+    let done = false;
+
+    scanStop = () => {
+      stopped = true;
+      cancelAnimationFrame(raf);
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+      scanStop = null;
+    };
+
+    const finish = (code) => {
+      done = true;
+      if (scanStop) scanStop();
+      UI.closeSheet();
+      const input = document.getElementById('obCode');
+      if (input) {
+        input.value = code;
+        input.dispatchEvent(new Event('input'));
+        input.focus();
+      }
+      UI.toast('已识别邀请码 ' + code + '，点「加入」即可');
+    };
+
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+      .then((s) => {
+        if (stopped) {
+          s.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        stream = s;
+        video.srcObject = s;
+        return video.play();
+      })
+      .then(() => {
+        if (stopped || done) return;
+        const tick = () => {
+          if (stopped || done) return;
+          if (video.readyState >= 2 && video.videoWidth) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const res = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+            if (res && res.data) {
+              const text = String(res.data);
+              const m = text.match(/[?&]code=([A-Za-z0-9]{4,12})/i);
+              const bare = text.match(/^([A-Za-z0-9]{4,12})$/);
+              const code = m ? m[1].toUpperCase() : bare ? bare[1].toUpperCase() : '';
+              if (code) return finish(code);
+            }
+          }
+          raf = requestAnimationFrame(tick);
+        };
+        tick();
+      })
+      .catch(() => {
+        if (stopped) return;
+        if (scanStop) scanStop();
+        UI.closeSheet();
+        UI.toast('无法打开摄像头，请检查权限或手动输入邀请码');
+      });
   }
 
   function rememberIdentifier(body) {
@@ -580,6 +697,7 @@
       if (hit('#actReset')) return onReset(body, body.querySelector('#actReset'));
       if (hit('#obCreate')) return onCreate(body, body.querySelector('#obCreate'));
       if (hit('#obJoin')) return onJoin(body, body.querySelector('#obJoin'));
+      if (hit('#obScan')) return openScanner();
       if (hit('#obLogout')) return AuthView.signOut();
     };
 

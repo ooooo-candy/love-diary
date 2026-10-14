@@ -557,8 +557,9 @@
           <div class="invite" data-act="copy-code">
             <div class="invite__label">情侣本邀请码</div>
             <div class="invite__code">${UI.escapeHtml(p.code || '------')}</div>
-            <span class="invite__hint">点击复制，发给 TA 就能一起写同一本</span>
+            <span class="invite__hint">点击复制，或生成二维码让 TA 扫一扫加入</span>
           </div>
+          ${joined ? '' : '<button class="btn btn--ghost btn--block btn--sm" type="button" data-act="show-qr" style="margin-top:10px">📱 生成邀请二维码</button>'}
           <div class="setting-row__hint" style="margin-top:10px">
             ${joined ? '✔ TA 已经加入了，你们正在共享同一本记录' : '还没有人加入，等 TA 用邀请码进来'}
           </div>
@@ -2389,6 +2390,54 @@
     });
   }
 
+  function inviteLink(code) {
+    return location.origin + location.pathname + '?code=' + code;
+  }
+
+  function showInviteQR() {
+    const p = Store.getProfile();
+    const code = p.code;
+    if (!code) return UI.toast('还没有邀请码');
+
+    let dataUrl = '';
+    if (typeof qrcode === 'function') {
+      try {
+        const qr = qrcode(0, 'M');
+        qr.addData(inviteLink(code));
+        qr.make();
+        dataUrl = qr.createDataURL(10, 4);
+      } catch (err) { /* 生成失败则只展示邀请码 */ }
+    }
+
+    const body = UI.openSheet(`
+      <div class="sheet__title">
+        <span>邀请 TA 加入</span>
+        <button class="mini-btn" type="button" data-act="close-sheet">✕</button>
+      </div>
+      <div class="card qr-card">
+        ${dataUrl ? '<img class="qr-img" src="' + dataUrl + '" alt="邀请二维码" />' : ''}
+        <div style="font-size:26px;font-weight:800;letter-spacing:6px;margin-top:10px">${UI.escapeHtml(code)}</div>
+        <div class="drop-hint" style="margin-top:10px">TA 用相机 / 微信「扫一扫」上面的码，<br/>打开 App 就会自动填好邀请码</div>
+      </div>
+      <div class="row" style="gap:10px;margin-top:12px">
+        <button class="btn btn--ghost" type="button" data-qr="link" style="flex:1">复制链接</button>
+        <button class="btn btn--ghost" type="button" data-qr="code" style="flex:1">复制邀请码</button>
+      </div>
+      <p class="record__note">每个本子仅限你们两个人加入，人满后邀请码会自动失效；TA 登录后点「用邀请码加入」即可（也可以直接扫上面的码）。</p>
+    `);
+    body.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-qr]');
+      if (!btn) return;
+      const text = btn.dataset.qr === 'link' ? inviteLink(code) : code;
+      try {
+        await navigator.clipboard.writeText(text);
+        UI.toast(btn.dataset.qr === 'link' ? '邀请链接已复制' : '邀请码已复制：' + code);
+      } catch (err) {
+        UI.toast('复制失败，请截图发给 TA');
+      }
+    });
+  }
+
   async function copyInviteCode() {
     const code = Store.getProfile().code;
     if (!code) return UI.toast('还没有邀请码');
@@ -2679,6 +2728,7 @@
     if (act === 'logout') return AuthView.signOut();
     if (act === 'security') return openSecurity();
     if (act === 'copy-code') return copyInviteCode();
+    if (act === 'show-qr') return showInviteQR();
     if (act === 'sync') return refresh();
     if (act === 'mood') {
       state.mood = el.dataset.val;

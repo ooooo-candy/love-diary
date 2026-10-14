@@ -1,10 +1,12 @@
 /* 离线缓存：安装后无网络也能打开（照片数据本就存在设备本地） */
-const CACHE = 'love-diary-v3';
+const CACHE = 'love-diary-v4';
 const ASSETS = [
   './',
   './index.html',
   './css/styles.css',
   './js/ui.js',
+  './js/vendor/qrcode.js',
+  './js/vendor/jsQR.js',
   './js/lunar.js',
   './js/store.js',
   './js/cloud.js',
