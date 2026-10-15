@@ -1,0 +1,19 @@
+<view class="page">
+  <view class="card add-card">
+    <view class="row">
+      <input class="input grow" maxlength="60" placeholder="想一起做的一件事，比如：去看海" value="{{text}}" bindinput="onText" bindconfirm="add" />
+      <button class="btn btn-primary btn-sm" disabled="{{busy}}" bindtap="add">添加</button>
+    </view>
+  </view>
+
+  <view class="card wish" wx:for="{{wishes}}" wx:key="id">
+    <view class="check {{item.done ? 'on' : ''}}" bindtap="toggle" data-id="{{item.id}}">{{item.done ? '✓' : ''}}</view>
+    <text class="wish-text {{item.done ? 'done' : ''}}">{{item.text}}</text>
+    <text class="del" bindtap="remove" data-id="{{item.id}}">✕</text>
+  </view>
+
+  <view wx:if="{{!wishes.length}}" class="empty">
+    <text class="emoji">⭐</text>
+    <text>清单空空的，把想一起做的事写下来</text>
+  </view>
+</view>

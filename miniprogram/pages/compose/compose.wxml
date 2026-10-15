@@ -45,6 +45,17 @@
     </view>
 
     <view class="field">
+      <text class="field-label">语音日记（最长 60 秒）</text>
+      <view class="voice-row">
+        <button class="voice-btn {{recording ? 'rec' : ''}}" bindtap="toggleRecord">
+          {{recording ? '⏹ 停止 ' + recSeconds + '″' : (audio ? '🎙 重录' : '🎙 开始录音')}}
+        </button>
+        <view wx:if="{{audio}}" class="voice-play" bindtap="playAudio">{{playing ? '⏸ 播放中' : '▶ 播放'}} {{audio.duration ? audio.duration + '″' : ''}}</view>
+        <text wx:if="{{audio}}" class="voice-del" bindtap="removeAudio">✕</text>
+      </view>
+    </view>
+
+    <view class="field">
       <text class="field-label">照片（最多 9 张）</text>
       <view class="grid">
         <view class="cell" wx:for="{{images}}" wx:key="fileId">

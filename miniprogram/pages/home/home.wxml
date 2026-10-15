@@ -13,6 +13,8 @@
   <view class="names">{{book.myName}} & {{book.partnerName}}</view>
   <view class="days"><text class="n">{{days}}</text><text class="u">天在一起</text></view>
   <view class="since">始于 {{book.anniversary}}</view>
+  <button class="miss-btn" bindtap="sendMiss">💗 想你</button>
+  <view wx:if="{{partnerMiss}}" class="miss-hint">TA 今天想了你 {{partnerMiss}} 次 💗</view>
   <view wx:if="{{!partnerJoined}}" class="code-card" bindtap="copyCode">
     <text class="code-label">情侣本邀请码（点击复制）</text>
     <text class="code">{{code}}</text>
@@ -27,6 +29,46 @@
     <view class="t2">{{hasToday ? '也再来一条？美好不嫌多' : '记下此刻的心情吧'}}</view>
   </view>
   <button class="btn btn-primary btn-sm" bindtap="goCompose">写一条</button>
+</view>
+
+<!-- 每日一问 -->
+<view class="card dq-card" bindtap="goDaily">
+  <view class="card-row">
+    <text class="card-emoji">💬</text>
+    <view class="card-main">
+      <view class="card-title">今日一问</view>
+      <view class="card-sub">{{daily.question}}</view>
+    </view>
+    <text class="card-badge {{dailyAnswered ? 'ok' : ''}}">{{dailyAnswered ? '已回答' : '去回答'}}</text>
+  </view>
+  <view wx:if="{{dailyAnswered && dailyPartner}}" class="dq-partner">TA 的回答：{{dailyPartner}}</view>
+  <view wx:elif="{{dailyAnswered}}" class="dq-partner dim">答完了就能看到 TA 的回答</view>
+</view>
+
+<!-- 心愿清单 -->
+<view class="card dq-card" bindtap="goWishes">
+  <view class="card-row">
+    <text class="card-emoji">⭐</text>
+    <view class="card-main">
+      <view class="card-title">心愿清单</view>
+      <view class="card-sub" wx:if="{{wishTotal}}">已点亮 {{wishDone}}/{{wishTotal}} 个心愿</view>
+      <view class="card-sub" wx:else>把想一起做的事都写下来</view>
+    </view>
+    <text class="card-arrow">›</text>
+  </view>
+  <view wx:if="{{wishTotal}}" class="wish-bar"><view class="wish-fill" style="width:{{wishPct}}%"></view></view>
+</view>
+
+<!-- 纠结转盘 -->
+<view class="card dq-card" bindtap="goWheel">
+  <view class="card-row">
+    <text class="card-emoji">🎯</text>
+    <view class="card-main">
+      <view class="card-title">纠结转盘</view>
+      <view class="card-sub">吃什么、去哪玩、谁洗碗？让缘分决定</view>
+    </view>
+    <text class="card-arrow">›</text>
+  </view>
 </view>
 
 <view class="section-title">最近的记录<text class="more" bindtap="goTimeline">全部 ›</text></view>
@@ -47,3 +89,9 @@
 </view>
 
 <view class="fab" bindtap="goCompose">＋</view>
+
+<!-- 想你爱心雨 -->
+<view class="rain" wx:if="{{rainHearts.length}}">
+  <text wx:for="{{rainHearts}}" wx:key="index" class="rain-heart"
+        style="left:{{item.left}}%;animation-delay:{{item.delay}}s;font-size:{{item.size}}rpx">{{item.emoji}}</text>
+</view>

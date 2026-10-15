@@ -18,6 +18,17 @@
 .days .u { font-size: 24rpx; opacity: .9; margin-left: 8rpx; }
 .since { font-size: 22rpx; opacity: .85; margin-top: 4rpx; }
 
+.miss-btn {
+  margin-top: 24rpx;
+  width: 260rpx; height: 72rpx; line-height: 72rpx;
+  border-radius: 999rpx;
+  background: rgba(255,255,255,.22);
+  color: #fff; font-size: 28rpx; font-weight: 800;
+  border: 2rpx solid rgba(255,255,255,.5);
+}
+.miss-btn::after { border: none; }
+.miss-hint { margin-top: 14rpx; font-size: 22rpx; opacity: .92; }
+
 .code-card {
   margin-top: 30rpx;
   background: rgba(255,255,255,.18);
@@ -34,6 +45,34 @@
 .today-text { flex: 1; }
 .t1 { font-size: 28rpx; font-weight: 700; }
 .t2 { font-size: 22rpx; color: var(--text-dim); margin-top: 4rpx; }
+
+.card-row { display: flex; align-items: center; gap: 18rpx; }
+.card-emoji { font-size: 46rpx; }
+.card-main { flex: 1; min-width: 0; }
+.card-title { font-size: 29rpx; font-weight: 800; }
+.card-sub {
+  font-size: 23rpx; color: var(--text-dim); margin-top: 6rpx;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.card-badge {
+  font-size: 22rpx; font-weight: 700; color: var(--brand);
+  background: var(--brand-soft);
+  padding: 8rpx 18rpx; border-radius: 999rpx; flex: none;
+}
+.card-badge.ok { color: #12a150; background: #e8f9ef; }
+.card-arrow { color: var(--text-dim); font-size: 34rpx; }
+.dq-card { margin-bottom: 20rpx; }
+.dq-partner {
+  margin-top: 16rpx; padding: 16rpx 20rpx;
+  background: var(--brand-soft); border-radius: var(--r-sm);
+  font-size: 24rpx; color: var(--text); line-height: 1.6;
+}
+.dq-partner.dim { color: var(--text-dim); }
+.wish-bar {
+  margin-top: 16rpx; height: 12rpx; border-radius: 999rpx;
+  background: var(--bg-2); overflow: hidden;
+}
+.wish-fill { height: 100%; border-radius: 999rpx; background: linear-gradient(90deg, var(--brand), var(--brand-2)); }
 
 .more { color: var(--brand); font-weight: 700; }
 
@@ -52,4 +91,16 @@
   display: flex; align-items: center; justify-content: center;
   box-shadow: 0 14rpx 34rpx -10rpx rgba(255, 107, 157, .7);
   z-index: 10;
+}
+
+/* 爱心雨 */
+.rain { position: fixed; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 999; overflow: hidden; }
+.rain-heart {
+  position: absolute; top: -60rpx;
+  animation: rainFall 3.6s ease-in forwards;
+}
+@keyframes rainFall {
+  0% { transform: translateY(0) scale(.6) rotate(-8deg); opacity: 0; }
+  12% { opacity: 1; }
+  100% { transform: translateY(105vh) scale(1.15) rotate(10deg); opacity: .1; }
 }

@@ -11,6 +11,19 @@ Page({
     busy: false
   },
 
+  onLoad(options) {
+    /* 从分享卡片或小程序码进来：自动切到加入模式并填好码 */
+    let code = options && options.code;
+    if (!code && options && options.scene) {
+      const scene = decodeURIComponent(options.scene);
+      const m = scene.match(/c=([A-Za-z0-9]{4,12})/);
+      if (m) code = m[1];
+    }
+    if (code) {
+      this.setData({ mode: 'join', code: String(code).toUpperCase() });
+    }
+  },
+
   switchMode(e) {
     this.setData({ mode: e.currentTarget.dataset.mode });
   },
@@ -19,6 +32,22 @@ Page({
   onPartnerName(e) { this.setData({ partnerName: e.detail.value }); },
   onDate(e) { this.setData({ anniversary: e.detail.value }); },
   onCode(e) { this.setData({ code: e.detail.value.toUpperCase() }); },
+
+  /* 扫一扫：扫 TA 的小程序码 / 二维码 */
+  scan() {
+    wx.scanCode({
+      success: (res) => {
+        const text = decodeURIComponent(res.result || res.path || '');
+        const m = text.match(/c=([A-Za-z0-9]{4,12})/i) || text.match(/code=([A-Za-z0-9]{4,12})/i) || text.match(/^([A-Z0-9]{6})$/i);
+        if (m) {
+          this.setData({ mode: 'join', code: m[1].toUpperCase() });
+          wx.showToast({ title: '已识别邀请码', icon: 'none' });
+        } else {
+          wx.showToast({ title: '没认出邀请码，手动输入吧', icon: 'none' });
+        }
+      }
+    });
+  },
 
   async submit() {
     if (this.data.busy) return;
@@ -47,7 +76,6 @@ Page({
       return;
     }
 
-    /* 加入 */
     if (!/^[A-Z0-9]{6}$/.test(d.code)) return wx.showToast({ title: '请输入 6 位邀请码', icon: 'none' });
     this.setData({ busy: true });
     try {
@@ -60,7 +88,5 @@ Page({
       api.toastErr(err);
       this.setData({ busy: false });
     }
-  },
-
-  copyCode() { /* 占位：创建后由 home 展示邀请码 */ }
+  }
 });

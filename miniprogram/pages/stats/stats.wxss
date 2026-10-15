@@ -35,6 +35,20 @@
 
 .foot { text-align: center; font-size: 20rpx; color: var(--text-dim); margin-top: 20rpx; }
 
+.invite-actions { display: flex; gap: 14rpx; margin-top: 16rpx; justify-content: center; }
+.invite-actions .btn { flex: 1; }
+
+.mig-card { display: flex; align-items: center; gap: 18rpx; }
+.mig-emoji { font-size: 48rpx; }
+.mig-main { flex: 1; min-width: 0; }
+.mig-title { font-size: 27rpx; font-weight: 800; }
+.mig-sub { font-size: 21rpx; color: var(--text-dim); margin-top: 4rpx; }
+
+.qr-sheet { display: flex; flex-direction: column; align-items: center; }
+.qr-img { width: 420rpx; height: 420rpx; margin: 10rpx 0 16rpx; background: #fff; border-radius: 20rpx; }
+.qr-hint { font-size: 22rpx; color: var(--text-dim); margin-bottom: 20rpx; }
+.close-btn { margin-top: 14rpx; }
+
 .mask {
   position: fixed; inset: 0;
   background: rgba(30, 12, 24, .45);

@@ -1,0 +1,26 @@
+<view class="page">
+  <view class="wrap">
+    <view class="left">
+      <view class="field-label">选项（勾选上转盘）</view>
+      <view class="row">
+        <input class="input grow" maxlength="12" placeholder="比如：火锅" bindinput="onInput" bindconfirm="add" />
+        <button class="btn btn-primary btn-sm" bindtap="add">添加</button>
+      </view>
+      <scroll-view scroll-y class="pool">
+        <label class="check-row" wx:for="{{pool}}" wx:key="*this">
+          <checkbox value="{{item}}" checked="{{items.indexOf(item) >= 0}}" bindtap="toggle" data-i="{{index}}" />
+          <text class="c-text">{{item}}</text>
+          <text class="c-del" catchtap="remove" data-i="{{index}}">✕</text>
+        </label>
+      </scroll-view>
+    </view>
+    <view class="right">
+      <view class="wheel-box">
+        <view class="pointer"></view>
+        <canvas type="2d" id="wheel" class="wheel" style="{{spinStyle}}"></canvas>
+      </view>
+      <button class="btn btn-primary btn-block go" disabled="{{spinning}}" bindtap="spin">🎯 开转！</button>
+    </view>
+  </view>
+  <view class="result">{{result}}</view>
+</view>

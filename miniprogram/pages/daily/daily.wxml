@@ -1,0 +1,27 @@
+<view class="page">
+  <view class="card">
+    <view class="q-label">今日一问 · {{daily.date}}</view>
+    <view class="q-text">{{daily.question}}</view>
+    <textarea class="textarea" maxlength="500" placeholder="写下你的答案…答完后就能看到 TA 的" value="{{input}}" bindinput="onInput" />
+    <button class="btn btn-primary btn-block" disabled="{{busy}}" bindtap="save">{{busy ? '保存中…' : '保存回答'}}</button>
+    <view wx:if="{{showPartner}}" class="partner-ans">
+      <text class="pa-name">{{partnerName}} 的回答</text>
+      <text class="pa-text">{{partner}}</text>
+    </view>
+    <view wx:elif="{{mine}}" class="partner-ans dim">TA 还没回答，答完互见</view>
+  </view>
+
+  <view class="section-title">往期的回答</view>
+  <view class="card his" wx:for="{{history}}" wx:key="date">
+    <view class="his-head">
+      <text class="his-q">{{item.question}}</text>
+      <text class="his-date">{{item.label}}{{item.rel ? ' · ' + item.rel : ''}}</text>
+    </view>
+    <view class="his-mine" wx:if="{{item.mine}}">{{item.mine}}</view>
+    <view class="his-partner" wx:if="{{item.partner}}">{{partnerName}}：{{item.partner}}</view>
+  </view>
+  <view wx:if="{{!history.length}}" class="empty">
+    <text class="emoji">💬</text>
+    <text>每天一个问题，答完互相可见</text>
+  </view>
+</view>

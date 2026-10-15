@@ -17,6 +17,57 @@
 
 .note { font-size: 26rpx; line-height: 1.7; margin-top: 14rpx; white-space: pre-wrap; }
 
+.voice-line {
+  display: inline-flex; align-items: center; gap: 8rpx;
+  margin-top: 14rpx;
+  font-size: 24rpx; font-weight: 700; color: var(--brand);
+  background: var(--brand-soft);
+  border-radius: 999rpx; padding: 12rpx 24rpx;
+}
+.voice-line:active { opacity: .75; }
+
+.rec-foot {
+  display: flex; gap: 16rpx;
+  margin-top: 16rpx; padding-top: 14rpx;
+  border-top: 1rpx dashed var(--border);
+}
+.foot-btn {
+  display: inline-flex; align-items: center; gap: 8rpx;
+  font-size: 24rpx; font-weight: 700; color: var(--text-dim);
+  background: var(--bg-2);
+  border-radius: 999rpx; padding: 10rpx 22rpx;
+}
+.foot-btn.liked { color: var(--brand); background: var(--brand-soft); }
+.foot-btn:active { transform: scale(.95); }
+
+/* 评论弹层 */
+.cmt-mask {
+  position: fixed; inset: 0;
+  background: rgba(30, 12, 24, .45);
+  z-index: 100;
+  display: flex; align-items: flex-end;
+}
+.cmt-sheet {
+  width: 100%; background: var(--bg);
+  border-radius: 30rpx 30rpx 0 0;
+  padding: 30rpx 30rpx calc(24rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  display: flex; flex-direction: column;
+  max-height: 75vh;
+}
+.cmt-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16rpx; }
+.cmt-title { font-size: 30rpx; font-weight: 800; }
+.cmt-close { font-size: 30rpx; color: var(--text-dim); padding: 8rpx; }
+.cmt-list { max-height: 50vh; }
+.cmt-item { background: var(--bg-2); border-radius: 14rpx; padding: 16rpx 20rpx; margin-bottom: 14rpx; }
+.cmt-top { display: flex; align-items: center; gap: 12rpx; margin-bottom: 6rpx; }
+.cmt-name { font-size: 23rpx; font-weight: 700; color: var(--brand); }
+.cmt-time { font-size: 20rpx; color: var(--text-dim); }
+.cmt-del { margin-left: auto; font-size: 24rpx; color: var(--text-dim); padding: 4rpx 8rpx; }
+.cmt-text { font-size: 26rpx; line-height: 1.6; }
+.cmt-row { display: flex; gap: 14rpx; align-items: center; margin-top: 10rpx; }
+.grow { flex: 1; }
+
 .thumbs { display: flex; gap: 10rpx; margin-top: 14rpx; position: relative; }
 .thumbs image { width: 200rpx; height: 200rpx; border-radius: var(--r-sm); }
 .more-mask {

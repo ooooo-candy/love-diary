@@ -52,10 +52,35 @@
         <text class="i-code">{{code}}</text>
         <text class="i-hint">把邀请码发给 TA，TA 在小程序里输入即可</text>
       </view>
+      <view class="invite-actions">
+        <button class="btn btn-ghost btn-sm" open-type="share">微信发给 TA</button>
+        <button class="btn btn-ghost btn-sm" bindtap="showQrcode">生成二维码</button>
+      </view>
     </block>
   </view>
 
+  <!-- 导入旧数据 -->
+  <view class="card mig-card" wx:if="{{needMigrate}}">
+    <view class="mig-emoji">📥</view>
+    <view class="mig-main">
+      <view class="mig-title">导入旧版本的数据</view>
+      <view class="mig-sub">把之前网页版里的记录和照片搬过来</view>
+    </view>
+    <button class="btn btn-primary btn-sm" bindtap="retryMigrate">去导入</button>
+  </view>
+
   <view class="foot">朝暮 · 记录在一起的每一天 ☁️</view>
+
+  <!-- 小程序码弹层 -->
+  <view class="mask" wx:if="{{showQr}}" bindtap="closeQr">
+    <view class="sheet qr-sheet" catchtap="">
+      <view class="sheet-title">TA 扫码直接加入</view>
+      <image class="qr-img" src="{{qrUrl}}" mode="aspectFit" />
+      <view class="qr-hint">让 TA 用微信「扫一扫」</view>
+      <button class="btn btn-primary btn-block" bindtap="saveQr">保存到相册</button>
+      <button class="btn btn-ghost btn-block close-btn" bindtap="closeQr">关闭</button>
+    </view>
+  </view>
 
   <!-- 编辑资料弹层 -->
   <view class="mask" wx:if="{{showEdit}}" bindtap="closeEdit">

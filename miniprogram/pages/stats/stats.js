@@ -11,6 +11,11 @@ Page({
     partnerJoined: false,
     partnerInfo: null,
     code: '',
+    /* 迁移状态 */
+    needMigrate: false,
+    migrated: false,
+    /* 小程序码 */
+    qrFileId: '',
     /* 编辑资料弹层 */
     showEdit: false,
     myName: '',
@@ -52,12 +57,69 @@ Page({
       photoCount: photoCount,
       partnerJoined: !!book.partnerJoined,
       partnerInfo: book.partnerInfo || null,
-      code: book.code || ''
+      code: book.code || '',
+      migrated: !!wx.getStorageSync('migrated'),
+      needMigrate: records.length === 0 && !wx.getStorageSync('migrated')
     });
   },
 
   copyCode() {
     wx.setClipboardData({ data: this.data.code });
+  },
+
+  /* 重试导入旧数据 */
+  retryMigrate() {
+    wx.removeStorageSync('migrated');
+    wx.reLaunch({ url: '/pages/login/login' });
+  },
+
+  /* 分享卡片邀请 TA */
+  onShareAppMessage() {
+    return {
+      title: '来和我一起记录我们的日子 ❤',
+      path: '/pages/onboard/onboard?code=' + this.data.code
+    };
+  },
+
+  /* 生成小程序码 */
+  async showQrcode() {
+    if (!this.data.code) return;
+    wx.showLoading({ title: '生成中…', mask: true });
+    try {
+      if (!this.data.qrFileId) {
+        const r = await api.call('book', { action: 'getQrcode', code: this.data.code });
+        this.setData({ qrFileId: r.fileId });
+      }
+      wx.cloud.getTempFileURL({
+        fileList: [this.data.qrFileId],
+        complete: (res) => {
+          wx.hideLoading();
+          const url = res.fileList && res.fileList[0] && res.fileList[0].tempFileURL;
+          if (url) this.setData({ qrUrl: url, showQr: true });
+          else wx.showToast({ title: '生成失败，试试分享卡片', icon: 'none' });
+        }
+      });
+    } catch (err) {
+      wx.hideLoading();
+      wx.showToast({ title: err.message || '生成失败，试试分享卡片', icon: 'none' });
+    }
+  },
+  closeQr() { this.setData({ showQr: false }); },
+
+  saveQr() {
+    if (!this.data.qrFileId) return;
+    wx.showLoading({ title: '保存中…', mask: true });
+    wx.cloud.downloadFile({
+      fileID: this.data.qrFileId,
+      success: (res) => {
+        wx.saveImageToPhotosAlbum({
+          filePath: res.tempFilePath,
+          success: () => { wx.hideLoading(); wx.showToast({ title: '已存到相册', icon: 'none' }); },
+          fail: () => { wx.hideLoading(); wx.showToast({ title: '没保存成功（需要相册权限）', icon: 'none' }); }
+        });
+      },
+      fail: () => { wx.hideLoading(); wx.showToast({ title: '下载失败', icon: 'none' }); }
+    });
   },
 
   openEdit() {

@@ -19,6 +19,9 @@
         </view>
       </view>
       <view class="note" wx:if="{{rec.note}}">{{rec.note}}</view>
+      <view class="voice-line" wx:if="{{rec.hasAudio}}" bindtap="playVoice" data-id="{{rec._id}}">
+        {{playingId === rec._id ? '⏸ 播放中' : '▶ 语音日记'}} {{rec.audioDuration ? rec.audioDuration + '″' : ''}}
+      </view>
       <view class="thumbs" wx:if="{{rec.thumbs.length}}">
         <image wx:for="{{rec.thumbs}}" wx:for-item="th" wx:for-index="t" wx:key="*this"
                src="{{th}}" mode="aspectFill" lazy-load
@@ -27,11 +30,47 @@
           +{{rec.more}}
         </view>
       </view>
+      <view class="rec-foot">
+        <view class="foot-btn {{rec.liked ? 'liked' : ''}}" bindtap="toggleLike" data-id="{{rec._id}}">
+          {{rec.liked ? '❤️' : '🤍'}}<text>{{rec.likeCount ? rec.likeCount : '喜欢'}}</text>
+        </view>
+        <view class="foot-btn" bindtap="openCmt" data-id="{{rec._id}}">
+          💬<text>{{rec.commentCount ? rec.commentCount : '评论'}}</text>
+        </view>
+      </view>
     </view>
   </view>
 
   <view wx:if="{{!total}}" class="empty">
     <text class="emoji">🕰</text>
     <text>时光轴空空的，去写第一条吧</text>
+  </view>
+
+  <!-- 评论弹层 -->
+  <view class="cmt-mask" wx:if="{{showCmt}}" bindtap="closeCmt">
+    <view class="cmt-sheet" catchtap="">
+      <view class="cmt-head">
+        <text class="cmt-title">评论</text>
+        <text class="cmt-close" bindtap="closeCmt">✕</text>
+      </view>
+      <scroll-view scroll-y class="cmt-list">
+        <view class="cmt-item" wx:for="{{cmtList}}" wx:key="id">
+          <view class="cmt-top">
+            <text class="cmt-name">{{item.name}}</text>
+            <text class="cmt-time">{{item.timeText}}</text>
+            <text wx:if="{{item.uid === myId}}" class="cmt-del" bindtap="delCmt" data-cid="{{item.id}}">✕</text>
+          </view>
+          <view class="cmt-text">{{item.text}}</view>
+        </view>
+        <view wx:if="{{!cmtList.length}}" class="empty">
+          <text class="emoji">💬</text>
+          <text>还没有评论，来抢沙发吧</text>
+        </view>
+      </scroll-view>
+      <view class="cmt-row">
+        <input class="input grow" maxlength="500" placeholder="写点甜甜的话…" value="{{cmtInput}}" bindinput="onCmtInput" bindconfirm="sendCmt" />
+        <button class="btn btn-primary btn-sm" disabled="{{cmtBusy}}" bindtap="sendCmt">发送</button>
+      </view>
+    </view>
   </view>
 </view>

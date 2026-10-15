@@ -1,0 +1,46 @@
+.page { padding: 24rpx 0 60rpx; }
+.wrap { display: flex; gap: 22rpx; padding: 0 24rpx; align-items: flex-start; }
+.left { width: 42%; min-width: 0; }
+.right { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+.row { display: flex; gap: 12rpx; align-items: center; margin: 12rpx 0 16rpx; }
+.grow { flex: 1; }
+
+.pool { max-height: 46vh; }
+.check-row {
+  display: flex; align-items: center; gap: 14rpx;
+  padding: 16rpx 10rpx;
+  border-bottom: 1rpx solid var(--border);
+}
+.c-text { flex: 1; font-size: 27rpx; font-weight: 600; }
+.c-del { color: var(--text-dim); padding: 4rpx 8rpx; }
+checkbox .wx-checkbox-input { transform: scale(1.15); }
+
+.wheel-box { position: relative; width: 400rpx; height: 400rpx; }
+.pointer {
+  position: absolute; top: -8rpx; left: 50%;
+  transform: translateX(-50%);
+  border-left: 18rpx solid transparent;
+  border-right: 18rpx solid transparent;
+  border-top: 30rpx solid var(--brand);
+  z-index: 2;
+  filter: drop-shadow(0 3rpx 5rpx rgba(122, 31, 67, .3));
+}
+.wheel {
+  width: 400rpx; height: 400rpx;
+  border-radius: 50%;
+  transition: transform 4.2s cubic-bezier(.12, .8, .16, 1);
+  box-shadow: 0 16rpx 44rpx -18rpx rgba(122, 31, 67, .5), 0 0 0 8rpx #fff;
+}
+.go { margin-top: 26rpx; width: 90%; }
+
+.result {
+  margin: 30rpx 24rpx 0;
+  min-height: 120rpx;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center;
+  font-size: 26rpx; line-height: 1.7; color: var(--text-dim);
+  background: linear-gradient(135deg, var(--brand-soft), var(--bg));
+  border-radius: var(--r-md);
+  padding: 20rpx;
+  white-space: pre-wrap;
+}

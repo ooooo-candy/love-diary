@@ -4,6 +4,27 @@
 .tag-input { flex: 1; }
 .tag-chips { margin-top: 16rpx; }
 
+.voice-row { display: flex; align-items: center; gap: 16rpx; }
+.voice-btn {
+  height: 72rpx; line-height: 72rpx;
+  border-radius: 999rpx;
+  background: var(--brand-soft); color: var(--brand);
+  font-size: 26rpx; font-weight: 700;
+  padding: 0 30rpx;
+}
+.voice-btn::after { border: none; }
+.voice-btn.rec { background: #ffe9ef; color: #e0356b; animation: recPulse 1.2s ease-in-out infinite; }
+.voice-play {
+  font-size: 25rpx; font-weight: 700; color: var(--brand);
+  background: var(--brand-soft);
+  border-radius: 999rpx; padding: 14rpx 26rpx;
+}
+.voice-del { color: var(--text-dim); font-size: 28rpx; padding: 8rpx; }
+@keyframes recPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .55; }
+}
+
 .grid { display: flex; flex-wrap: wrap; gap: 12rpx; }
 .cell {
   width: 200rpx; height: 200rpx;

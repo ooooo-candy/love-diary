@@ -6,7 +6,10 @@
     "pages/timeline/timeline",
     "pages/album/album",
     "pages/stats/stats",
-    "pages/compose/compose"
+    "pages/compose/compose",
+    "pages/wishes/wishes",
+    "pages/daily/daily",
+    "pages/wheel/wheel"
   ],
   "window": {
     "navigationBarBackgroundColor": "#ff6b9d",
