@@ -1,0 +1,55 @@
+.love-card {
+  margin: 24rpx;
+  border-radius: var(--r-md);
+  padding: 44rpx 30rpx 36rpx;
+  text-align: center;
+  color: #fff;
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  box-shadow: 0 16rpx 40rpx -18rpx rgba(255, 107, 157, .7);
+  position: relative;
+  overflow: hidden;
+}
+.pair { display: flex; align-items: center; justify-content: center; gap: 26rpx; }
+.heart { font-size: 40rpx; }
+.avatar { border: 4rpx solid rgba(255,255,255,.8); color: #fff; background: rgba(255,255,255,.25); }
+.names { font-size: 32rpx; font-weight: 800; margin-top: 22rpx; letter-spacing: 2rpx; }
+.days { margin-top: 8rpx; }
+.days .n { font-size: 76rpx; font-weight: 900; }
+.days .u { font-size: 24rpx; opacity: .9; margin-left: 8rpx; }
+.since { font-size: 22rpx; opacity: .85; margin-top: 4rpx; }
+
+.code-card {
+  margin-top: 30rpx;
+  background: rgba(255,255,255,.18);
+  border-radius: var(--r-sm);
+  padding: 20rpx;
+  display: flex; flex-direction: column; gap: 6rpx;
+}
+.code-label { font-size: 22rpx; opacity: .9; }
+.code { font-size: 52rpx; font-weight: 900; letter-spacing: 14rpx; }
+.code-hint { font-size: 20rpx; opacity: .8; }
+
+.today-card { display: flex; align-items: center; gap: 20rpx; }
+.today-emoji { font-size: 56rpx; }
+.today-text { flex: 1; }
+.t1 { font-size: 28rpx; font-weight: 700; }
+.t2 { font-size: 22rpx; color: var(--text-dim); margin-top: 4rpx; }
+
+.more { color: var(--brand); font-weight: 700; }
+
+.rec-head { display: flex; align-items: center; gap: 16rpx; }
+.mood { font-size: 44rpx; }
+.rec-title { font-size: 28rpx; font-weight: 700; }
+.rec-date { font-size: 22rpx; color: var(--text-dim); margin-top: 2rpx; }
+.rec-note { font-size: 25rpx; color: var(--text); margin-top: 12rpx; line-height: 1.6; }
+.rec-cover { width: 100%; height: 280rpx; border-radius: var(--r-sm); margin-top: 14rpx; }
+
+.fab {
+  position: fixed; right: 40rpx; bottom: 60rpx;
+  width: 108rpx; height: 108rpx; border-radius: 50%;
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  color: #fff; font-size: 56rpx; font-weight: 300;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 14rpx 34rpx -10rpx rgba(255, 107, 157, .7);
+  z-index: 10;
+}

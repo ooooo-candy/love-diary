@@ -1,0 +1,12 @@
+<view class="page">
+  <view class="section-title">共 {{count}} 张照片 · 来自 {{recCount}} 条记录</view>
+  <view class="grid">
+    <image wx:for="{{shots}}" wx:key="fileId" class="shot"
+           src="{{item.url}}" mode="aspectFill" lazy-load
+           bindtap="preview" data-i="{{index}}" />
+  </view>
+  <view wx:if="{{!count}}" class="empty">
+    <text class="emoji">🖼</text>
+    <text>相册空空的，写记录时带上照片吧</text>
+  </view>
+</view>

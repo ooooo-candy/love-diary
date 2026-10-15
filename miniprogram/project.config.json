@@ -1,0 +1,15 @@
+{
+  "miniprogramRoot": "./",
+  "cloudfunctionRoot": "cloudfunctions/",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "urlCheck": true
+  },
+  "appid": "touristappid",
+  "projectname": "chaomu-miniapp",
+  "libVersion": "3.4.10",
+  "condition": {}
+}

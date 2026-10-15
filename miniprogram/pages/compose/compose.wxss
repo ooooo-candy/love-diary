@@ -1,0 +1,27 @@
+.page { padding: 24rpx 0 60rpx; }
+.mood-chip { font-size: 26rpx; }
+.row { display: flex; gap: 14rpx; align-items: center; }
+.tag-input { flex: 1; }
+.tag-chips { margin-top: 16rpx; }
+
+.grid { display: flex; flex-wrap: wrap; gap: 12rpx; }
+.cell {
+  width: 200rpx; height: 200rpx;
+  border-radius: var(--r-sm);
+  overflow: hidden; position: relative;
+  background: var(--bg-2);
+}
+.cell image { width: 100%; height: 100%; }
+.cell.add {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 60rpx; color: var(--brand);
+  border: 3rpx dashed var(--brand);
+  background: var(--brand-soft);
+}
+.del {
+  position: absolute; top: 8rpx; right: 8rpx;
+  width: 40rpx; height: 40rpx; border-radius: 50%;
+  background: rgba(30, 12, 24, .7); color: #fff;
+  font-size: 22rpx;
+  display: flex; align-items: center; justify-content: center;
+}

@@ -1,0 +1,19 @@
+<view class="login-page">
+  <view class="hero">
+    <view class="logo">💞</view>
+    <view class="title">朝暮</view>
+    <view class="desc">朝朝暮暮，都是你</view>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading">
+    <view class="dot"></view>
+    <view class="dot d2"></view>
+    <view class="dot d3"></view>
+    <text class="loading-text">正在进入你们的小日子…</text>
+  </view>
+
+  <view wx:if="{{error}}" class="err">
+    <text>{{error}}</text>
+    <button class="btn btn-primary retry" bindtap="doLogin">重试</button>
+  </view>
+</view>

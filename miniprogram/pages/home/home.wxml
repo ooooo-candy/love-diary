@@ -1,0 +1,49 @@
+<view class="love-card">
+  <view class="pair">
+    <view class="avatar avatar-lg">
+      <image wx:if="{{book.myAvatar}}" src="{{book.myAvatar}}" mode="aspectFill" />
+      <text wx:else>{{book.myName[0]}}</text>
+    </view>
+    <text class="heart">❤️</text>
+    <view class="avatar avatar-lg">
+      <image wx:if="{{book.partnerAvatar}}" src="{{book.partnerAvatar}}" mode="aspectFill" />
+      <text wx:else>{{book.partnerName[0]}}</text>
+    </view>
+  </view>
+  <view class="names">{{book.myName}} & {{book.partnerName}}</view>
+  <view class="days"><text class="n">{{days}}</text><text class="u">天在一起</text></view>
+  <view class="since">始于 {{book.anniversary}}</view>
+  <view wx:if="{{!partnerJoined}}" class="code-card" bindtap="copyCode">
+    <text class="code-label">情侣本邀请码（点击复制）</text>
+    <text class="code">{{code}}</text>
+    <text class="code-hint">TA 用小程序加入后，这里会变成 TA 的信息</text>
+  </view>
+</view>
+
+<view class="card today-card">
+  <view class="today-emoji">{{hasToday ? '✅' : '📝'}}</view>
+  <view class="today-text">
+    <view class="t1">{{hasToday ? '今天已经记录过啦' : '今天还没写点什么'}}</view>
+    <view class="t2">{{hasToday ? '也再来一条？美好不嫌多' : '记下此刻的心情吧'}}</view>
+  </view>
+  <button class="btn btn-primary btn-sm" bindtap="goCompose">写一条</button>
+</view>
+
+<view class="section-title">最近的记录<text class="more" bindtap="goTimeline">全部 ›</text></view>
+<view class="card rec" wx:for="{{latest}}" wx:key="_id">
+  <view class="rec-head">
+    <text class="mood">{{item.mood}}</text>
+    <view class="rec-meta">
+      <view class="rec-title">{{item.title}}</view>
+      <view class="rec-date">{{item.dateShort}}{{item.rel ? ' · ' + item.rel : ''}}</view>
+    </view>
+  </view>
+  <view class="rec-note" wx:if="{{item.note}}">{{item.note}}</view>
+  <image wx:if="{{item.cover}}" class="rec-cover" src="{{item.cover}}" mode="aspectFill" lazy-load />
+</view>
+<view wx:if="{{!latest.length}}" class="empty">
+  <text class="emoji">🌱</text>
+  <text>还没有记录，写下第一条吧</text>
+</view>
+
+<view class="fab" bindtap="goCompose">＋</view>

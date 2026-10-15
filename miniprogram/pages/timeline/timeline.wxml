@@ -1,0 +1,37 @@
+<view class="page">
+  <view wx:for="{{groups}}" wx:key="date" wx:for-index="g" class="group">
+    <view class="group-head">
+      <text class="g-date">{{item.label}}</text>
+      <text class="g-rel" wx:if="{{item.rel}}">{{item.rel}}</text>
+    </view>
+    <view class="card rec" wx:for="{{item.items}}" wx:for-item="rec" wx:for-index="i" wx:key="_id">
+      <view class="rec-head">
+        <text class="mood">{{rec.mood}}</text>
+        <view class="rec-meta">
+          <view class="rec-title" wx:if="{{rec.title}}">{{rec.title}}</view>
+          <view class="rec-sub">
+            {{rec.authorName}}{{rec.place ? ' · 📍' + rec.place : ''}}{{rec.imageCount ? ' · 📷' + rec.imageCount : ''}}
+          </view>
+        </view>
+        <view class="ops">
+          <text class="op" bindtap="edit" data-id="{{rec._id}}">✎</text>
+          <text class="op del" bindtap="remove" data-id="{{rec._id}}">🗑</text>
+        </view>
+      </view>
+      <view class="note" wx:if="{{rec.note}}">{{rec.note}}</view>
+      <view class="thumbs" wx:if="{{rec.thumbs.length}}">
+        <image wx:for="{{rec.thumbs}}" wx:for-item="th" wx:for-index="t" wx:key="*this"
+               src="{{th}}" mode="aspectFill" lazy-load
+               bindtap="preview" data-g="{{g}}" data-i="{{i}}" data-t="{{t}}" />
+        <view class="more-mask" wx:if="{{rec.more}}" bindtap="preview" data-g="{{g}}" data-i="{{i}}" data-t="0">
+          +{{rec.more}}
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{!total}}" class="empty">
+    <text class="emoji">🕰</text>
+    <text>时光轴空空的，去写第一条吧</text>
+  </view>
+</view>

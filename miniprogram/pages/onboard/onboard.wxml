@@ -1,0 +1,38 @@
+<view class="page">
+  <view class="hero">
+    <view class="emoji">{{mode === 'create' ? '💌' : '🔑'}}</view>
+    <view class="title">{{mode === 'create' ? '创建你们的本子' : '加入 TA 的本子'}}</view>
+    <view class="desc">{{mode === 'create' ? '创建后会生成邀请码，发给 TA 一起写' : '输入 TA 给你的 6 位邀请码'}}</view>
+  </view>
+
+  <view class="chips tabs">
+    <view class="chip {{mode === 'create' ? 'on' : ''}}" bindtap="switchMode" data-mode="create">创建本子</view>
+    <view class="chip {{mode === 'join' ? 'on' : ''}}" bindtap="switchMode" data-mode="join">用邀请码加入</view>
+  </view>
+
+  <view class="card" wx:if="{{mode === 'create'}}">
+    <view class="field">
+      <text class="field-label">我的昵称</text>
+      <input class="input" maxlength="12" placeholder="我" value="{{myName}}" bindinput="onMyName" />
+    </view>
+    <view class="field">
+      <text class="field-label">TA 的昵称</text>
+      <input class="input" maxlength="12" placeholder="宝贝" value="{{partnerName}}" bindinput="onPartnerName" />
+    </view>
+    <view class="field">
+      <text class="field-label">我们在一起的日子</text>
+      <picker mode="date" value="{{anniversary}}" bindchange="onDate">
+        <view class="input picker">{{anniversary}}</view>
+      </picker>
+    </view>
+    <button class="btn btn-primary btn-block" disabled="{{busy}}" bindtap="submit">{{busy ? '创建中…' : '创建'}}</button>
+  </view>
+
+  <view class="card" wx:else>
+    <view class="field">
+      <text class="field-label">邀请码</text>
+      <input class="input code-input" maxlength="6" placeholder="6 位邀请码" value="{{code}}" bindinput="onCode" />
+    </view>
+    <button class="btn btn-primary btn-block" disabled="{{busy}}" bindtap="submit">{{busy ? '加入中…' : '加入'}}</button>
+  </view>
+</view>

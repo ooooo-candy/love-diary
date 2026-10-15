@@ -1,0 +1,64 @@
+<view class="page">
+  <view class="card">
+    <view class="field">
+      <text class="field-label">日期</text>
+      <picker mode="date" value="{{date}}" bindchange="onDate">
+        <view class="input">{{date}}</view>
+      </picker>
+    </view>
+
+    <view class="field">
+      <text class="field-label">此刻的心情</text>
+      <view class="chips">
+        <view class="chip mood-chip {{mood === item.key ? 'on' : ''}}" wx:for="{{moods}}" wx:key="key" bindtap="pickMood" data-key="{{item.key}}">
+          {{item.emoji}} {{item.label}}
+        </view>
+      </view>
+    </view>
+
+    <view class="field">
+      <text class="field-label">标题</text>
+      <input class="input" maxlength="60" placeholder="给这一刻起个名字" value="{{title}}" bindinput="onTitle" />
+    </view>
+
+    <view class="field">
+      <text class="field-label">想说的话</text>
+      <textarea class="textarea" maxlength="5000" placeholder="记录今天的点点滴滴…" value="{{note}}" bindinput="onNote" />
+    </view>
+
+    <view class="field">
+      <text class="field-label">地点（选填）</text>
+      <input class="input" maxlength="60" placeholder="比如：海边、那家火锅店" value="{{place}}" bindinput="onPlace" />
+    </view>
+
+    <view class="field">
+      <text class="field-label">标签</text>
+      <view class="row">
+        <input class="input tag-input" maxlength="16" placeholder="回车或点添加" value="{{tagInput}}" bindinput="onTagInput" bindconfirm="addTag" />
+        <button class="btn btn-ghost btn-sm" bindtap="addTag">添加</button>
+      </view>
+      <view class="chips tag-chips" wx:if="{{tags.length}}">
+        <view class="chip on" wx:for="{{tags}}" wx:key="*this" bindtap="removeTag" data-i="{{index}}">
+          #{{item}} ✕
+        </view>
+      </view>
+    </view>
+
+    <view class="field">
+      <text class="field-label">照片（最多 9 张）</text>
+      <view class="grid">
+        <view class="cell" wx:for="{{images}}" wx:key="fileId">
+          <image src="{{item.tempUrl}}" mode="aspectFill" data-i="{{index}}" bindtap="preview" />
+          <view class="del" catchtap="removeImage" data-i="{{index}}">✕</view>
+        </view>
+        <view class="cell" wx:for="{{localImages}}" wx:key="tempPath">
+          <image src="{{item.tempPath}}" mode="aspectFill" />
+          <view class="del" catchtap="removeLocal" data-i="{{index}}">✕</view>
+        </view>
+        <view class="cell add" wx:if="{{images.length + localImages.length < 9}}" bindtap="chooseImages">＋</view>
+      </view>
+    </view>
+
+    <button class="btn btn-primary btn-block" disabled="{{busy}}" bindtap="save">{{busy ? '保存中…' : '保存'}}</button>
+  </view>
+</view>

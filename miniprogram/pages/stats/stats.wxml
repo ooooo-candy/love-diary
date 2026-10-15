@@ -1,0 +1,88 @@
+<view class="page">
+  <!-- 账号卡 -->
+  <view class="card me-card">
+    <view class="avatar avatar-sm">
+      <image wx:if="{{user.avatar}}" src="{{user.avatar}}" mode="aspectFill" />
+      <text wx:else>{{user.nickname ? user.nickname[0] : '我'}}</text>
+    </view>
+    <view class="me-main">
+      <view class="me-name">{{user.nickname || '我'}}</view>
+      <view class="me-sub">{{book.code ? '本子 ' + book.code : ''}}</view>
+    </view>
+    <button class="btn btn-ghost btn-sm" bindtap="openEdit">编辑资料</button>
+  </view>
+
+  <!-- 数字统计 -->
+  <view class="stat-row">
+    <view class="stat">
+      <view class="n">{{days}}</view>
+      <view class="l">天在一起</view>
+    </view>
+    <view class="stat">
+      <view class="n">{{recCount}}</view>
+      <view class="l">条记录</view>
+    </view>
+    <view class="stat">
+      <view class="n">{{photoCount}}</view>
+      <view class="l">张照片</view>
+    </view>
+  </view>
+
+  <!-- 对方信息 / 邀请码 -->
+  <view class="card">
+    <block wx:if="{{partnerJoined && partnerInfo}}">
+      <view class="section-title" style="margin:0 0 16rpx">TA</view>
+      <view class="partner">
+        <view class="avatar avatar-sm">
+          <image wx:if="{{partnerInfo.avatar}}" src="{{partnerInfo.avatar}}" mode="aspectFill" />
+          <text wx:else>{{partnerInfo.nickname[0]}}</text>
+        </view>
+        <view class="me-main">
+          <view class="me-name">{{partnerInfo.nickname}}</view>
+          <view class="me-sub">已加入 · 你们共享同一本</view>
+        </view>
+        <text class="dot on"></text>
+      </view>
+      <view class="love-line">❤️ 你们正在共享同一本记录</view>
+    </block>
+    <block wx:else>
+      <view class="section-title" style="margin:0 0 16rpx">等 TA 加入</view>
+      <view class="invite" bindtap="copyCode">
+        <text class="i-label">情侣本邀请码（点击复制）</text>
+        <text class="i-code">{{code}}</text>
+        <text class="i-hint">把邀请码发给 TA，TA 在小程序里输入即可</text>
+      </view>
+    </block>
+  </view>
+
+  <view class="foot">朝暮 · 记录在一起的每一天 ☁️</view>
+
+  <!-- 编辑资料弹层 -->
+  <view class="mask" wx:if="{{showEdit}}" bindtap="closeEdit">
+    <view class="sheet" catchtap="">
+      <view class="sheet-title">我们的资料</view>
+      <view class="avatar-edit" bindtap="changeAvatar">
+        <view class="avatar avatar-lg">
+          <image wx:if="{{user.avatar}}" src="{{user.avatar}}" mode="aspectFill" />
+          <text wx:else>{{user.nickname ? user.nickname[0] : '我'}}</text>
+        </view>
+        <text class="avatar-tip">点头像更换</text>
+      </view>
+      <view class="field">
+        <text class="field-label">我的昵称</text>
+        <input class="input" maxlength="12" value="{{myName}}" bindinput="onMyName" />
+      </view>
+      <view class="field">
+        <text class="field-label">TA 的昵称</text>
+        <input class="input" maxlength="12" value="{{partnerName}}" bindinput="onPartnerName" />
+      </view>
+      <view class="field">
+        <text class="field-label">我们在一起的日子</text>
+        <picker mode="date" value="{{anniversary}}" bindchange="onDate">
+          <view class="input">{{anniversary}}</view>
+        </picker>
+      </view>
+      <button class="btn btn-primary btn-block" disabled="{{busy}}" bindtap="saveEdit">保存</button>
+    </view>
+  </view>
+</view>

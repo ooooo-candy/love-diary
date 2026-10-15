@@ -1,0 +1,10 @@
+.page { padding: 24rpx 0 60rpx; }
+.grid {
+  display: flex; flex-wrap: wrap; gap: 8rpx;
+  padding: 0 24rpx;
+}
+.shot {
+  width: 232rpx; height: 232rpx;
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+}
