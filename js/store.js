@@ -19,6 +19,31 @@
   const previewCache = new Map();
   const listeners = [];
 
+  /* 临时链接持久缓存：fileId → { url, exp }（临时链接有效期 1 小时，提前 5 分钟作废） */
+  const URL_CACHE_KEY = 'ld:imgurls';
+  function loadUrlCache() {
+    try { return JSON.parse(localStorage.getItem(URL_CACHE_KEY) || '{}'); } catch (err) { return {}; }
+  }
+  function urlCacheGet(id) {
+    try {
+      const hit = loadUrlCache()[id];
+      if (hit && hit.url && hit.exp > Date.now() + 300000) return hit.url;
+    } catch (err) { /* 忽略 */ }
+    return '';
+  }
+  function urlCachePut(id, url) {
+    try {
+      const cache = loadUrlCache();
+      cache[id] = { url: url, exp: Date.now() + 55 * 60000 };
+      const keys = Object.keys(cache);
+      if (keys.length > 150) {
+        keys.sort((a, b) => (cache[a].exp || 0) - (cache[b].exp || 0));
+        keys.slice(0, keys.length - 150).forEach((k) => delete cache[k]);
+      }
+      localStorage.setItem(URL_CACHE_KEY, JSON.stringify(cache));
+    } catch (err) { /* 忽略 */ }
+  }
+
   function emit() {
     listeners.forEach((fn) => {
       try { fn(); } catch (e) { console.error(e); }
@@ -326,14 +351,56 @@
       if (!ref) return '';
       if (!ref.id) return ref.localUrl || '';
       if (previewCache.has(String(ref.id))) return previewCache.get(String(ref.id));
+      const cached = urlCacheGet(String(ref.id));
+      if (cached) {
+        previewCache.set(String(ref.id), cached);
+        return cached;
+      }
       try {
         const map = await Cloud.getFileUrls([ref.id]);
         const url = map[ref.id] || '';
-        if (url) previewCache.set(String(ref.id), url);
+        if (url) {
+          previewCache.set(String(ref.id), url);
+          urlCachePut(String(ref.id), url);
+        }
         return url;
       } catch (err) {
         return '';
       }
+    },
+
+    /* 一次批量把多个 fileId 换成临时链接（带本地持久缓存，重进 App 秒开） */
+    async resolveImageURLs(ids) {
+      const out = {};
+      const need = [];
+      (ids || []).forEach((id) => {
+        if (previewCache.has(String(id))) {
+          out[id] = previewCache.get(String(id));
+          if (!out[id]) delete out[id];
+          else return;
+        }
+        const cached = urlCacheGet(String(id));
+        if (cached) {
+          previewCache.set(String(id), cached);
+          out[id] = cached;
+        } else {
+          need.push(id);
+        }
+      });
+      if (need.length) {
+        try {
+          const map = await Cloud.getFileUrls(need);
+          need.forEach((id) => {
+            const url = map[id] || '';
+            if (url) {
+              out[id] = url;
+              previewCache.set(String(id), url);
+              urlCachePut(String(id), url);
+            }
+          });
+        } catch (err) { /* 失败返回已解析部分 */ }
+      }
+      return out;
     },
 
     allImageRefs() {
@@ -396,6 +463,7 @@
       try {
         localStorage.removeItem(CACHE_KEY);
         localStorage.removeItem(LS_LEGACY);
+        localStorage.removeItem(URL_CACHE_KEY);
       } catch (err) { /* 忽略 */ }
       emit();
     }

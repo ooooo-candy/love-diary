@@ -61,16 +61,24 @@
   async function hydrateImages(root) {
     const refs = Store.allImageRefs();
     const map = new Map(refs.map((r) => [r.id, r]));
-    const imgs = UI.$$('img[data-ref]', root || document);
-    await Promise.all(
-      imgs.map(async (img) => {
-        if (img.getAttribute('src')) return;
-        const ref = map.get(img.dataset.ref);
-        if (!ref) return;
-        const url = await resolveURL(ref);
-        if (url) img.src = url;
-      })
+    const imgs = UI.$$('img[data-ref]', root || document).filter(
+      (img) => !img.getAttribute('src') && map.get(img.dataset.ref)
     );
+    if (!imgs.length) return;
+    const ids = [];
+    imgs.forEach((img) => {
+      const ref = map.get(img.dataset.ref);
+      if (ref.data || ref.localUrl) img.src = ref.data || ref.localUrl;
+      else ids.push(ref.id);
+    });
+    if (!ids.length) return;
+    /* 一批请求拿回所有临时链接，避免每张图一次网络往返 */
+    const urls = await Store.resolveImageURLs(ids);
+    imgs.forEach((img) => {
+      const ref = map.get(img.dataset.ref);
+      const url = urls[ref.id];
+      if (url) img.src = url;
+    });
   }
 
   function recordDates() {
@@ -645,89 +653,89 @@
       </div>
 
       <div class="section">
-        <div class="section__head"><div class="section__title">设置与备份</div></div>
-        <div class="card">
-          <div class="setting-row">
-            <div class="setting-row__main">
-              <div class="setting-row__label">我们的资料</div>
-              <div class="setting-row__hint">昵称、头像、在一起的日子</div>
+        <div class="section__head">
+          <div class="section__title">设置</div>
+          <div class="section__more">${Cloud.isOnline() ? '☁️ 数据云端同步中' : '离线模式'}</div>
+        </div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="srow" data-act="settings">
+            <span class="srow__icon">👤</span>
+            <div class="srow__main">
+              <div class="srow__label">我们的资料</div>
+              <div class="srow__hint">头像 · 昵称 · 主题色 · 纪念日</div>
             </div>
-            <button class="btn btn--ghost btn--sm" type="button" data-act="settings">编辑</button>
+            <span class="srow__chev">›</span>
           </div>
-          <div class="setting-row">
-            <div class="setting-row__main">
-              <div class="setting-row__label">重要日子</div>
-              <div class="setting-row__hint">纪念日、生日倒计时</div>
+          <div class="srow" data-act="events">
+            <span class="srow__icon">🎉</span>
+            <div class="srow__main">
+              <div class="srow__label">重要日子</div>
+              <div class="srow__hint">纪念日与生日倒计时</div>
             </div>
-            <button class="btn btn--ghost btn--sm" type="button" data-act="events">管理</button>
+            <span class="srow__chev">›</span>
           </div>
-          <div class="setting-row">
-            <div class="setting-row__main">
-              <div class="setting-row__label">导出备份</div>
-              <div class="setting-row__hint">把全部记录和照片存成一个文件</div>
+          <div class="srow" data-act="security">
+            <span class="srow__icon">🔒</span>
+            <div class="srow__main">
+              <div class="srow__label">账号安全</div>
+              <div class="srow__hint">密码 · 密保 · 恢复码</div>
             </div>
-            <button class="btn btn--ghost btn--sm" type="button" data-act="export">导出</button>
+            <span class="srow__chev">›</span>
           </div>
-          <div class="setting-row">
-            <div class="setting-row__main">
-              <div class="setting-row__label">导入备份</div>
-              <div class="setting-row__hint">从之前导出的文件恢复</div>
+          <div class="srow" data-act="backup">
+            <span class="srow__icon">🗂</span>
+            <div class="srow__main">
+              <div class="srow__label">备份与恢复</div>
+              <div class="srow__hint">导出 / 导入 / 清理本机</div>
             </div>
-            <button class="btn btn--ghost btn--sm" type="button" data-act="import">导入</button>
+            <span class="srow__chev">›</span>
           </div>
-          <div class="setting-row">
-            <div class="setting-row__main">
-              <div class="setting-row__label">检查更新</div>
-              <div class="setting-row__hint">当前版本 ${UI.escapeHtml(
-                window.APP_VERSION || 'dev'
-              )}；更新会自动生效，若还是旧界面点这里强制刷新</div>
-            </div>
-            <button class="btn btn--ghost btn--sm" type="button" data-act="force-update">刷新</button>
-          </div>
-          <div class="setting-row">
-            <div class="setting-row__main">
-              <div class="setting-row__label">${isIOS() ? '添加到手机桌面' : '安装安卓版 App'}</div>
-              <div class="setting-row__hint">${
+          <div class="srow" data-act="${isIOS() ? 'install' : 'download-apk'}">
+            <span class="srow__icon">📲</span>
+            <div class="srow__main">
+              <div class="srow__label">${isIOS() ? '添加到手机桌面' : '安装安卓版 App'}</div>
+              <div class="srow__hint">${
                 isIOS()
-                  ? '用 Safari 打开后点「分享 → 添加到主屏幕」'
+                  ? 'Safari 打开 → 分享 → 添加到主屏幕'
                   : isAppMode()
-                  ? '需要重装或发给朋友安装时，在这里下载最新安装包'
-                  : '下载安装包，独立图标、全屏打开；以后自动更新，不用重装'
+                  ? '重装或分享给别人时下载最新安装包'
+                  : '独立图标全屏打开，以后自动更新'
               }</div>
             </div>
-            <button class="btn btn--ghost btn--sm" type="button" data-act="${
-              isIOS() ? 'install' : 'download-apk'
-            }">${isIOS() ? '指引' : '下载'}</button>
+            <span class="srow__chev">›</span>
           </div>
-          <div class="setting-row">
-            <div class="setting-row__main">
-              <div class="setting-row__label">数据存储</div>
-              <div class="setting-row__hint">${
-                Cloud.isOnline()
-                  ? '记录和照片保存在云端，登录即可在多台设备同步'
-                  : '当前未连接云服务，数据只存在这台设备'
-              }</div>
+          <div class="srow" data-act="force-update">
+            <span class="srow__icon">♻️</span>
+            <div class="srow__main">
+              <div class="srow__label">检查更新</div>
+              <div class="srow__hint">版本 ${UI.escapeHtml(window.APP_VERSION || 'dev')} · 界面没变就点这里强制刷新</div>
             </div>
-          </div>
-          <div class="setting-row">
-            <div class="setting-row__main">
-              <div class="setting-row__label">账号安全</div>
-              <div class="setting-row__hint">修改密码、密保问题、恢复码</div>
-            </div>
-            <button class="btn btn--ghost btn--sm" type="button" data-act="security">管理</button>
-          </div>
-          <div class="setting-row">
-            <div class="setting-row__main">
-              <div class="setting-row__label">清空本机数据</div>
-              <div class="setting-row__hint">清除这台设备上的缓存并回到登录页</div>
-            </div>
-            <button class="btn btn--ghost btn--sm" type="button" data-act="clear">清空</button>
-          </div>
-            </div>
+            <span class="srow__chev">›</span>
           </div>
         </div>
       </div>
     `;
+  }
+
+  function openBackupSheet() {
+    const body = UI.openSheet(`
+      <div class="sheet__title">
+        <span>备份与恢复</span>
+        <button class="mini-btn" type="button" data-act="close-sheet">✕</button>
+      </div>
+      <p class="record__note" style="margin-top:0">记录和照片都保存在云端，多台设备登录即可同步。备份文件用来把数据带走或转移到别的账号。</p>
+      <button class="btn btn--primary btn--block" type="button" data-bk="export">⬇️ 导出备份（含照片）</button>
+      <button class="btn btn--ghost btn--block" type="button" data-bk="import" style="margin-top:10px">⬆️ 从备份文件导入</button>
+      <button class="btn btn--ghost btn--block btn--sm" type="button" data-bk="clear" style="margin-top:18px;color:var(--text-dim)">清空本机缓存并退出登录</button>
+    `);
+    body.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-bk]');
+      if (!b) return;
+      UI.closeSheet();
+      if (b.dataset.bk === 'export') exportBackup();
+      if (b.dataset.bk === 'import') importBackup();
+      if (b.dataset.bk === 'clear') clearAll();
+    });
   }
 
   /* ---------------- 渲染入口 ---------------- */
@@ -1175,30 +1183,21 @@
         <button class="mini-btn" type="button" data-act="close-sheet">✕</button>
       </div>
 
-      <div class="field">
-        <span class="field__label">我的头像</span>
-        <div class="upload-avatar">
-          ${avatarHtml(p.myAvatar, p.myName)}
-          <button class="btn btn--ghost btn--sm" type="button" data-act="avatar" data-who="myAvatar">上传</button>
-          ${p.myAvatar ? '<button class="btn btn--ghost btn--sm" type="button" data-act="rm-avatar" data-who="myAvatar">移除</button>' : ''}
+      <div class="set-grid">
+        <div class="set-card">
+          <div class="set-avatar" data-act="avatar" data-who="myAvatar" title="点头像更换">
+            ${avatarHtml(p.myAvatar, p.myName, 'avatar--sm')}
+            ${p.myAvatar ? '<span class="set-avatar__rm" data-rm-avatar="myAvatar">✕</span>' : ''}
+          </div>
+          <input class="input" id="sMyName" maxlength="12" value="${UI.escapeHtml(p.myName || '')}" placeholder="我的昵称" />
         </div>
-      </div>
-      <div class="field">
-        <label class="field__label" for="sMyName">我的昵称</label>
-        <input class="input" id="sMyName" value="${UI.escapeHtml(p.myName || '')}" />
-      </div>
-
-      <div class="field">
-        <span class="field__label">TA 的头像</span>
-        <div class="upload-avatar">
-          ${avatarHtml(p.partnerAvatar, p.partnerName)}
-          <button class="btn btn--ghost btn--sm" type="button" data-act="avatar" data-who="partnerAvatar">上传</button>
-          ${p.partnerAvatar ? '<button class="btn btn--ghost btn--sm" type="button" data-act="rm-avatar" data-who="partnerAvatar">移除</button>' : ''}
+        <div class="set-card">
+          <div class="set-avatar" data-act="avatar" data-who="partnerAvatar" title="点头像更换">
+            ${avatarHtml(p.partnerAvatar, p.partnerName, 'avatar--sm')}
+            ${p.partnerAvatar ? '<span class="set-avatar__rm" data-rm-avatar="partnerAvatar">✕</span>' : ''}
+          </div>
+          <input class="input" id="sPartnerName" maxlength="12" value="${UI.escapeHtml(p.partnerName || '')}" placeholder="TA 的昵称" />
         </div>
-      </div>
-      <div class="field">
-        <label class="field__label" for="sPartnerName">TA 的昵称</label>
-        <input class="input" id="sPartnerName" value="${UI.escapeHtml(p.partnerName || '')}" />
       </div>
 
       <div class="field">
@@ -1211,13 +1210,11 @@
         <div class="palettes">${palettes}</div>
       </div>
 
-      <div class="row" style="margin-top:18px">
-        <button class="btn btn--ghost" type="button" data-act="close-sheet">取消</button>
-        <button class="btn btn--primary" type="button" data-act="save-profile">保存</button>
-      </div>
+      <button class="btn btn--primary btn--block" type="button" data-act="save-profile" style="margin-top:6px">保存</button>
     `;
 
     const body = UI.openSheet(html);
+    hydrateImages(body);
 
     const avatarInput = document.createElement('input');
     avatarInput.type = 'file';
@@ -1247,27 +1244,26 @@
     });
 
     body.addEventListener('click', async (e) => {
-      const av = e.target.closest('[data-act="avatar"]');
-      if (av) {
-        who = av.dataset.who;
-        avatarInput.click();
-        return;
-      }
-      const rm = e.target.closest('[data-act="rm-avatar"]');
+      const rm = e.target.closest('[data-rm-avatar]');
       if (rm) {
-        const key = rm.dataset.who;
-        Store.saveProfile({ [key]: null }).then(() => {
+        Store.saveProfile({ [rm.dataset.rmAvatar]: null }).then(() => {
           UI.closeSheet();
           openSettings();
           render();
         });
         return;
       }
+      const av = e.target.closest('[data-act="avatar"]');
+      if (av) {
+        who = av.dataset.who;
+        avatarInput.click();
+        return;
+      }
       const pal = e.target.closest('[data-pal]');
       if (pal) {
         Store.saveProfile({ palette: pal.dataset.pal }).catch(() => {});
         UI.$$('.palette').forEach((b) => b.classList.toggle('is-on', b === pal));
-        render();
+        document.documentElement.setAttribute('data-palette', pal.dataset.pal);
         return;
       }
       const save = e.target.closest('[data-act="save-profile"]');
@@ -1337,7 +1333,7 @@
       </div>
       <div class="dc-wrap">
         <div class="dc-left">
-          <span class="field__label">选项库（点一下加到转盘）</span>
+          <span class="field__label">选项（点一下上转盘，再点取消）</span>
           <div class="row" style="gap:8px;align-items:center;margin:8px 0 10px">
             <input class="input" id="dcInput" maxlength="12" placeholder="比如：火锅" style="flex:1;min-width:0" />
             <button class="btn btn--primary btn--sm" type="button" id="dcAdd" style="flex:none">添加</button>
@@ -1348,8 +1344,7 @@
           <div class="dc-wheel-box">
             <canvas id="dcCanvas" width="440" height="440"></canvas>
           </div>
-          <div class="dc-wheel-tags" id="dcTags"></div>
-          <button class="btn btn--primary btn--block" type="button" id="dcGo">🎯 开转！</button>
+          <button class="btn btn--primary btn--block" type="button" id="dcGo" style="margin-top:12px">🎯 开转！</button>
         </div>
       </div>
       <div class="dc-result" id="dcResult">吃什么、去哪玩、谁洗碗…<br/>让缘分替你决定 🎲</div>
@@ -1357,7 +1352,6 @@
     const body = UI.openSheet(html);
 
     const poolEl = body.querySelector('#dcPool');
-    const tagsEl = body.querySelector('#dcTags');
     const inputEl = body.querySelector('#dcInput');
     const goBtn = body.querySelector('#dcGo');
     const resultEl = body.querySelector('#dcResult');
@@ -1371,18 +1365,10 @@
         ? pool
             .map(
               (o, i) =>
-                `<span class="dc-pool__opt${items.indexOf(o) >= 0 ? ' is-on' : ''}" data-add="${i}">${UI.escapeHtml(o)}<b data-pdel="${i}">✕</b></span>`
+                `<span class="dc-pool__opt${items.indexOf(o) >= 0 ? ' is-on' : ''}" data-toggle="${i}">${UI.escapeHtml(o)}<b data-pdel="${i}">✕</b></span>`
             )
             .join('')
-        : '<span class="dq-empty">还没有常用选项，先添加一个吧</span>';
-    }
-
-    function renderTags() {
-      tagsEl.innerHTML = items.length
-        ? items
-            .map((o, i) => `<span class="dc-tag" data-wdel="${i}">${UI.escapeHtml(o)}<b>✕</b></span>`)
-            .join('')
-        : '<span class="dq-empty">转盘空空的，点左边选项加进来</span>';
+        : '<span class="dq-empty">还没有选项，先添加一个吧</span>';
     }
 
     function drawWheel() {
@@ -1431,58 +1417,59 @@
 
     function refresh() {
       renderPool();
-      renderTags();
       drawWheel();
     }
 
     body.addEventListener('click', (e) => {
       const pdel = e.target.closest('[data-pdel]');
       if (pdel && !spinning) {
-        pool.splice(Number(pdel.dataset.pdel), 1);
+        const i = Number(pdel.dataset.pdel);
+        const o = pool[i];
+        const at = items.indexOf(o);
+        if (at >= 0) items.splice(at, 1);
+        pool.splice(i, 1);
         savePool();
-        renderPool();
-        return;
-      }
-      const wdel = e.target.closest('[data-wdel]');
-      if (wdel && !spinning) {
-        items.splice(Number(wdel.dataset.wdel), 1);
         saveWheel();
         refresh();
         return;
       }
-      const add = e.target.closest('[data-add]');
-      if (add && !spinning) {
-        const o = pool[Number(add.dataset.add)];
+      const toggle = e.target.closest('[data-toggle]');
+      if (toggle && !spinning) {
+        const o = pool[Number(toggle.dataset.toggle)];
         if (!o) return;
-        if (items.indexOf(o) >= 0) {
-          UI.toast('「' + o + '」已经在转盘上啦');
-          return;
+        const at = items.indexOf(o);
+        if (at >= 0) {
+          items.splice(at, 1);
+          if (items.length < 2) resultEl.innerHTML = '至少要两个选项才能开转哦';
+        } else {
+          if (items.length >= 12) {
+            UI.toast('转盘最多 12 个选项');
+            return;
+          }
+          items.push(o);
         }
-        if (items.length >= 12) {
-          UI.toast('转盘最多 12 个选项');
-          return;
-        }
-        items.push(o);
         saveWheel();
         refresh();
-        UI.toast('已把「' + o + '」加到转盘 🎯');
         return;
       }
       if (e.target.closest('#dcAdd')) {
         const v = (inputEl.value || '').trim();
         if (!v) return;
         if (pool.indexOf(v) >= 0) {
-          UI.toast('选项库里已经有「' + v + '」了');
+          UI.toast('已经有「' + v + '」了');
+          inputEl.value = '';
           return;
         }
         if (pool.length >= 24) {
-          UI.toast('选项库满啦，先删掉一些吧');
+          UI.toast('选项满啦，先删掉一些吧');
           return;
         }
         pool.push(v);
+        if (items.length < 12) items.push(v);
         inputEl.value = '';
         savePool();
-        renderPool();
+        saveWheel();
+        refresh();
         return;
       }
       if (e.target.closest('#dcGo')) spin();
@@ -1625,7 +1612,23 @@
     return pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
-  async function toggleLike(id) {
+  function updateLikeBtn(btn, likes, myId) {
+    if (!btn) return;
+    const liked = likes.indexOf(myId) >= 0;
+    btn.classList.toggle('is-liked', liked);
+    btn.innerHTML = (liked ? '❤️' : '🤍') + '<span>' + (likes.length ? likes.length : '喜欢') + '</span>';
+  }
+
+  function updateCommentBtn(id, count) {
+    const btn = document.querySelector(
+      '.rec-foot__btn[data-act="comments"][data-id="' + String(id).replace(/"/g, '') + '"]'
+    );
+    if (!btn) return;
+    const span = btn.querySelector('span');
+    if (span) span.textContent = count ? count : '评论';
+  }
+
+  async function toggleLike(id, btn) {
     const rec = Store.getRecord(id);
     if (!rec) return;
     const myId = (Cloud.session && Cloud.session.uid) || '';
@@ -1633,12 +1636,13 @@
     const at = likes.indexOf(myId);
     if (at >= 0) likes.splice(at, 1);
     else likes.push(myId);
+    /* 只更新状态和当前按钮，不整页重渲染（重渲染会重建图片导致闪烁） */
     Store.patchRecord(id, { likes: likes });
-    render();
+    updateLikeBtn(btn, likes, myId);
     try {
       const r = await Cloud.api.toggleLike(id);
       Store.patchRecord(id, { likes: r.likes || [] });
-      render();
+      updateLikeBtn(btn, r.likes || [], myId);
     } catch (err) {
       UI.toast(err.message || '点赞失败');
     }
@@ -1685,8 +1689,9 @@
       try {
         const r = await Cloud.api.addComment(id, text);
         const cur = Store.getRecord(id);
-        Store.patchRecord(id, { comments: ((cur && cur.comments) || []).concat([r.comment]) });
-        render();
+        const comments = ((cur && cur.comments) || []).concat([r.comment]);
+        Store.patchRecord(id, { comments: comments });
+        updateCommentBtn(id, comments.length);
         openComments(id);
       } catch (err) {
         btn.disabled = false;
@@ -1703,8 +1708,9 @@
       try {
         await Cloud.api.delComment(id, del.dataset.cmtDel);
         const cur = Store.getRecord(id);
-        Store.patchRecord(id, { comments: (cur.comments || []).filter((c) => c.id !== del.dataset.cmtDel) });
-        render();
+        const comments = (cur.comments || []).filter((c) => c.id !== del.dataset.cmtDel);
+        Store.patchRecord(id, { comments: comments });
+        updateCommentBtn(id, comments.length);
         openComments(id);
       } catch (err) {
         UI.toast(err.message || '删除失败');
@@ -3013,13 +3019,14 @@
     if (act === 'daily-history') return openDailyHistory();
     if (act === 'wishes') return openWishes();
     if (act === 'play-voice') return playVoice(el);
-    if (act === 'like') return toggleLike(el.dataset.id);
+    if (act === 'like') return toggleLike(el.dataset.id, el);
     if (act === 'comments') return openComments(el.dataset.id);
     if (act === 'force-update') return forceUpdate();
     if (act === 'import') return importBackup();
     if (act === 'clear') return clearAll();
     if (act === 'logout') return AuthView.signOut();
     if (act === 'security') return openSecurity();
+    if (act === 'backup') return openBackupSheet();
     if (act === 'copy-code') return copyInviteCode();
     if (act === 'show-qr') return showInviteQR();
     if (act === 'sync') return refresh();

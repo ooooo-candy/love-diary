@@ -859,18 +859,46 @@ img { display: block; max-width: 100%; }
   box-shadow: 0 10px 28px -12px rgba(122, 31, 67, .45), 0 0 0 5px #fff;
   transition: transform 4.2s cubic-bezier(.12, .8, .16, 1);
 }
-.dc-wheel-tags {
-  display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
-  margin: 10px 0; min-height: 26px; max-width: 100%;
+.dc-wheel-tags { display: none; }
+
+/* ---------- 资料设置弹层 ---------- */
+.set-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  margin-bottom: 6px;
 }
-.dc-tag {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11px; font-weight: 600;
-  padding: 4px 9px; border-radius: 999px;
-  background: var(--brand-soft); color: var(--brand);
+.set-card {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  background: var(--bg-2);
+  border-radius: var(--r-md); padding: 16px 12px 14px;
+}
+.set-avatar { position: relative; cursor: pointer; }
+.set-avatar:active .avatar { transform: scale(.94); }
+.set-avatar__rm {
+  position: absolute; top: -4px; right: -6px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: rgba(30, 12, 24, .78); color: #fff;
+  font-size: 11px; line-height: 20px; text-align: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .25);
+}
+.set-card .input { width: 100%; text-align: center; font-weight: 700; }
+
+/* ---------- 设置紧凑行 ---------- */
+.srow {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--border);
   cursor: pointer; user-select: none;
 }
-.dc-tag b { font-weight: 600; opacity: .65; }
+.srow:last-child { border-bottom: none; }
+.srow:active { background: var(--bg-2); }
+.srow__icon { font-size: 19px; flex: none; }
+.srow__main { flex: 1; min-width: 0; }
+.srow__label { font-size: 14px; font-weight: 700; }
+.srow__hint {
+  font-size: 11.5px; color: var(--text-dim); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.srow__chev { color: var(--text-dim); font-size: 18px; flex: none; }
 
 /* ---------- 语音日记 ---------- */
 .voice-play {
