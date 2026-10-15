@@ -60,10 +60,26 @@ exports.main = async (event) => {
     const u = await callerOf(OPENID);
     if (!u) return { ok: false, error: '请先登录' };
 
-    /* ---------- 第一步：拉取旧数据，定位/创建目标本子 ---------- */
+    /* ---------- 第零步：列出旧本子让人选 ---------- */
+    if (event.action === 'list') {
+      const dump = await fetchDump(event.oldBase);
+      const list = (dump.books || []).map((b, i) => ({
+        index: i,
+        code: b.code,
+        myName: b.myName || '我',
+        partnerName: b.partnerName || '宝贝',
+        anniversary: b.anniversary || '',
+        count: (dump.records || []).filter((r) => r.bookId === b._id).length
+      }));
+      list.sort((a, b) => b.count - a.count);
+      return { ok: true, data: { books: list } };
+    }
+
+    /* ---------- 第一步：按所选本子定位/创建目标本子 ---------- */
     if (event.action === 'init') {
       const dump = await fetchDump(event.oldBase);
-      const oldBook = (dump.books || [])[0] || { code: 'CHAMU1', myName: '我', partnerName: '宝贝', anniversary: '' };
+      const idx = Math.max(0, Number(event.bookIndex) || 0);
+      const oldBook = (dump.books || [])[idx] || { code: 'CHAMU1', myName: '我', partnerName: '宝贝', anniversary: '' };
 
       let bookId = u.bookId || '';
       let created = false;

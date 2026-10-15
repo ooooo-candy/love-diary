@@ -28,3 +28,31 @@
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-14rpx); }
 }
+
+.books-mask {
+  position: fixed; inset: 0;
+  background: rgba(30, 12, 24, .5);
+  z-index: 100;
+  display: flex; align-items: flex-end;
+}
+.books-sheet {
+  width: 100%;
+  background: #fff;
+  border-radius: 30rpx 30rpx 0 0;
+  padding: 34rpx 34rpx calc(30rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+.books-title { font-size: 32rpx; font-weight: 800; text-align: center; }
+.books-sub { font-size: 22rpx; color: #b08e9c; text-align: center; margin: 10rpx 0 20rpx; }
+.books-list { max-height: 50vh; }
+.book-row {
+  display: flex; align-items: center; gap: 16rpx;
+  padding: 22rpx 20rpx;
+  border-bottom: 1rpx solid #f3e2e9;
+}
+.book-row:active { background: #fff0f5; }
+.book-main { flex: 1; min-width: 0; }
+.book-name { font-size: 29rpx; font-weight: 700; }
+.book-sub { font-size: 22rpx; color: #b08e9c; margin-top: 4rpx; }
+.book-arrow { color: #b08e9c; font-size: 36rpx; }
+.skip { margin-top: 24rpx; }

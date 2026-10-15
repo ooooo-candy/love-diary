@@ -16,4 +16,22 @@
     <text>{{error}}</text>
     <button class="btn btn-primary retry" bindtap="doLogin">重试</button>
   </view>
+
+  <!-- 选择要迁移的旧本子 -->
+  <view wx:if="{{showBooks}}" class="books-mask">
+    <view class="books-sheet">
+      <view class="books-title">找到旧版本的这些本子</view>
+      <view class="books-sub">选你们的那个，记录和照片会自动搬进来</view>
+      <scroll-view scroll-y class="books-list">
+        <view class="book-row" wx:for="{{oldBooks}}" wx:key="index" bindtap="pickBook" data-index="{{item.index}}">
+          <view class="book-main">
+            <view class="book-name">{{item.myName}} & {{item.partnerName}}</view>
+            <view class="book-sub">邀请码 {{item.code}} · {{item.count}} 条记录</view>
+          </view>
+          <text class="book-arrow">›</text>
+        </view>
+      </scroll-view>
+      <button class="btn btn-ghost btn-block skip" bindtap="skipMigration">不迁移了，直接进入</button>
+    </view>
+  </view>
 </view>
