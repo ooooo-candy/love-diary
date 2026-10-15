@@ -986,7 +986,16 @@
           timeEl.textContent = Math.floor((Date.now() - startedAt) / 1000) + '″ 录音中…';
         }, 400);
       } catch (err) {
-        UI.toast('拿不到麦克风，请检查权限');
+        const name = (err && err.name) || '';
+        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+          UI.toast('麦克风权限被拒绝：请到系统设置 → 应用 → 朝暮 → 权限，打开麦克风');
+        } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+          UI.toast('这台设备上没有找到麦克风');
+        } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+          UI.toast('麦克风被其他应用占用了，关掉再试');
+        } else {
+          UI.toast('录音启动失败：' + (err && err.message ? err.message : name || '未知错误'));
+        }
       }
     }
 
