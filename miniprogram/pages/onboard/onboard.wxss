@@ -14,3 +14,11 @@
 }
 .picker { line-height: 1.4; }
 .scan-btn { margin-top: 16rpx; }
+.import-link {
+  margin-top: 24rpx;
+  text-align: center;
+  font-size: 24rpx;
+  font-weight: 700;
+  color: var(--brand);
+  padding: 10rpx 0;
+}

@@ -1,5 +1,6 @@
 const api = require('../../utils/api');
 const util = require('../../utils/util');
+const migrate = require('../../utils/migrate');
 
 Page({
   data: {
@@ -47,6 +48,57 @@ Page({
         }
       }
     });
+  },
+
+  /* 把旧版本网页里的数据导进来 */
+  importOld() {
+    if (this.data.busy) return;
+    wx.showLoading({ title: '连接旧版本…', mask: true });
+    migrate
+      .listBooks()
+      .then((books) => {
+        wx.hideLoading();
+        if (!books.length) {
+          wx.setStorageSync('migrated', true);
+          return wx.showToast({ title: '旧版本里没有记录', icon: 'none' });
+        }
+        const top = books.slice(0, 6);
+        wx.showActionSheet({
+          itemList: top.map((b) => `${b.myName} & ${b.partnerName}（${b.count} 条记录）`),
+          success: (res) => {
+            const chosen = top[res.tapIndex];
+            if (!chosen) return;
+            this.doImport(chosen.index);
+          }
+        });
+      })
+      .catch((err) => {
+        wx.hideLoading();
+        wx.showModal({
+          title: '旧数据导入失败',
+          content: (err.message || '未知错误') + '。重试吗？',
+          confirmText: '重试',
+          cancelText: '取消',
+          confirmColor: '#ff6b9d',
+          success: (res) => { if (res.confirm) this.importOld(); }
+        });
+      });
+  },
+
+  async doImport(bookIndex) {
+    this.setData({ busy: true });
+    try {
+      await migrate.run(bookIndex);
+      const data = await api.call('user', { action: 'login' });
+      getApp().globalData.user = data.user;
+      wx.showToast({ title: '导入完成 ❤', icon: 'none' });
+      setTimeout(() => {
+        if (data.user.bookId) wx.switchTab({ url: '/pages/home/home' });
+      }, 400);
+    } catch (err) {
+      api.toastErr(err);
+      this.setData({ busy: false });
+    }
   },
 
   async submit() {

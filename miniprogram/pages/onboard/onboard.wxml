@@ -26,6 +26,7 @@
       </picker>
     </view>
     <button class="btn btn-primary btn-block" disabled="{{busy}}" bindtap="submit">{{busy ? '创建中…' : '创建'}}</button>
+    <view class="import-link" bindtap="importOld">📥 把旧版本里的记录和照片导进来 ›</view>
   </view>
 
   <view class="card" wx:else>
@@ -35,5 +36,6 @@
     </view>
     <button class="btn btn-primary btn-block" disabled="{{busy}}" bindtap="submit">{{busy ? '加入中…' : '加入'}}</button>
     <button class="btn btn-ghost btn-block scan-btn" bindtap="scan">📷 扫一扫 TA 的二维码</button>
+    <view class="import-link" bindtap="importOld">📥 把旧版本里的记录和照片导进来 ›</view>
   </view>
 </view>

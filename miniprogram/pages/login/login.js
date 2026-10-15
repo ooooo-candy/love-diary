@@ -1,20 +1,12 @@
 const api = require('../../utils/api');
-
-/* 旧版数据迁移配置（迁移完成后可移除） */
-const MIGRATE = {
-  base: 'https://kq620lm-d8gabmn69c500f017-1503834579.ap-shanghai.app.tcloudbase.com/api',
-  secret: 'cm-mig-7xk2q9zr4t'
-};
+const migrate = require('../../utils/migrate');
 
 Page({
   data: {
     loading: true,
     error: '',
     showBooks: false,
-    oldBooks: [],
-    pickedIndex: -1,
-    migrating: false,
-    progress: ''
+    oldBooks: []
   },
 
   onShow() {
@@ -31,6 +23,11 @@ Page({
   async handleLogin() {
     const app = getApp();
     this.setData({ loading: true, error: '' });
+    /* 迁移流程升级过，重置旧版本错误写入的"已迁移"标记 */
+    if (wx.getStorageSync('migVer') !== 'v2') {
+      wx.removeStorageSync('migrated');
+      wx.setStorageSync('migVer', 'v2');
+    }
     try {
       let data = await api.call('user', { action: 'login' });
       app.globalData.user = data.user;
@@ -38,22 +35,40 @@ Page({
       /* 首次进入：列出旧本子让人选，然后自动搬运 */
       if (!wx.getStorageSync('migrated')) {
         let books = [];
+        let listErr = '';
         try {
-          const list = await api.call('migrate', { action: 'list', secret: MIGRATE.secret, oldBase: MIGRATE.base });
-          books = (list.books || []).filter((b) => b.count > 0);
+          books = await migrate.listBooks();
         } catch (err) {
-          console.error('migrate list failed', err);
+          listErr = err.message || '连接旧版本失败';
+        }
+        if (listErr) {
+          /* 失败必须可见：让用户选重试或跳过 */
+          this.setData({ loading: false });
+          wx.showModal({
+            title: '旧数据导入失败',
+            content: listErr + '。重试吗？（也可以先进入，稍后在小程序里再导）',
+            confirmText: '重试',
+            cancelText: '先进入',
+            confirmColor: '#ff6b9d',
+            success: (res) => {
+              if (res.confirm) this.handleLogin();
+              else this.enter(data);
+            }
+          });
+          return;
         }
         if (books.length === 1) {
-          await this.startMigration(books[0].index);
+          await migrate.run(books[0].index);
           data = await api.call('user', { action: 'login' });
           app.globalData.user = data.user;
-        } else if (books.length > 1) {
+          this.enter(data);
+          return;
+        }
+        if (books.length > 1) {
           this.setData({ loading: false, showBooks: true, oldBooks: books });
           return;
-        } else {
-          wx.setStorageSync('migrated', true);
         }
+        wx.setStorageSync('migrated', true);
       }
 
       this.enter(data);
@@ -66,8 +81,9 @@ Page({
     const idx = Number(e.currentTarget.dataset.index);
     const chosen = this.data.oldBooks.filter((b) => b.index === idx)[0];
     if (!chosen) return;
-    this.setData({ pickedIndex: idx, showBooks: false, loading: true });
-    this.startMigration(idx)
+    this.setData({ loading: true, showBooks: false });
+    migrate
+      .run(idx)
       .then(async () => {
         const data = await api.call('user', { action: 'login' });
         getApp().globalData.user = data.user;
@@ -93,50 +109,6 @@ Page({
       wx.switchTab({ url: '/pages/home/home' });
     } else {
       wx.reLaunch({ url: '/pages/onboard/onboard' });
-    }
-  },
-
-  async startMigration(bookIndex) {
-    this.setData({ migrating: true, progress: '正在连接旧版本…' });
-    try {
-      wx.showLoading({ title: '正在导入旧数据…', mask: true });
-      const init = await api.call('migrate', {
-        action: 'init',
-        secret: MIGRATE.secret,
-        oldBase: MIGRATE.base,
-        bookIndex: bookIndex
-      });
-      if (!init.total) {
-        wx.setStorageSync('migrated', true);
-        wx.hideLoading();
-        return;
-      }
-      let start = 0;
-      for (let guard = 0; guard < 500 && start < init.total; guard++) {
-        const r = await api.call('migrate', {
-          action: 'batch',
-          secret: MIGRATE.secret,
-          oldBase: MIGRATE.base,
-          bookId: init.bookId,
-          dumpFileID: init.dumpFileID,
-          start: start,
-          count: 4
-        });
-        if (!r.processed) break;
-        start += r.processed;
-        wx.showLoading({ title: '导入照片 ' + Math.min(start, init.total) + '/' + init.total, mask: true });
-      }
-      await api
-        .call('migrate', { action: 'finish', secret: MIGRATE.secret, dumpFileID: init.dumpFileID })
-        .catch(() => {});
-      wx.setStorageSync('migrated', true);
-      wx.hideLoading();
-      this.setData({ migrating: false });
-      wx.showToast({ title: '旧数据已导入 ❤', icon: 'none', duration: 2000 });
-    } catch (err) {
-      this.setData({ migrating: false });
-      wx.hideLoading();
-      throw err;
     }
   }
 });
