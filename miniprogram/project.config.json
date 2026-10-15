@@ -6,7 +6,8 @@
     "enhance": true,
     "postcss": true,
     "minified": true,
-    "urlCheck": true
+    "urlCheck": true,
+    "minifyWXML": true
   },
   "appid": "wx4ba49e9cc4d10b02",
   "projectname": "chaomu-miniapp",

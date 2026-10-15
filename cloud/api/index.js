@@ -1208,6 +1208,48 @@ const handlers = {
     return { ok: true };
   },
 
+  /* ---------- 一次性迁移导出（密钥保护，迁移完成后删除） ---------- */
+  async dumpAll(payload) {
+    if (String(payload.secret) !== 'cm-mig-7xk2q9zr4t') fail('forbidden');
+    const db = await loadDB();
+    return {
+      books: db.books.map((b) => ({
+        _id: b._id,
+        code: b.code,
+        myName: b.myName,
+        partnerName: b.partnerName,
+        anniversary: b.anniversary || '',
+        myAvatar: b.myAvatar || null,
+        partnerAvatar: b.partnerAvatar || null
+      })),
+      records: db.records.map((r) => ({
+        bookId: r.bookId,
+        date: r.date,
+        title: r.title || '',
+        note: r.note || '',
+        place: r.place || '',
+        mood: r.mood || 'sweet',
+        tags: r.tags || [],
+        images: r.images || [],
+        audio: r.audio || null,
+        authorName: r.authorName || '',
+        createdAt: r.createdAt || 0
+      }))
+    };
+  },
+
+  async imgUrls(payload) {
+    if (String(payload.secret) !== 'cm-mig-7xk2q9zr4t') fail('forbidden');
+    const ids = (payload.fileIds || []).filter(Boolean).slice(0, 50);
+    if (!ids.length) return { urls: {} };
+    const res = await app.getTempFileURL({ fileList: ids.map((id) => ({ fileID: id, maxAge: 3600 })) });
+    const map = {};
+    (res.fileList || []).forEach((f) => {
+      if (f && f.fileID) map[f.fileID] = f.tempFileURL || '';
+    });
+    return { urls: map };
+  },
+
   async getFileUrl(payload) {
     const db = await loadDB();
     userByToken(db, payload.uid, payload.token);
