@@ -230,6 +230,7 @@ exports.main = async (event) => {
       if (typeof event.partnerName === 'string' && event.partnerName.trim()) patch[otherPre + 'Name'] = event.partnerName.trim().slice(0, 12);
       if (typeof event.anniversary === 'string') patch.anniversary = event.anniversary;
       if (typeof event.myAvatar === 'string') patch[pre + 'Avatar'] = event.myAvatar;
+      if (Array.isArray(event.events)) patch.events = event.events.slice(0, 30);
       if (Object.keys(patch).length) await books.doc(u.bookId).update({ data: patch });
       const fresh = await books.doc(u.bookId).get();
       return { ok: true, data: { book: publicBook(fresh.data, u._id) } };

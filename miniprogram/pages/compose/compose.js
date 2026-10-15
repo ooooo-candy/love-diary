@@ -1,13 +1,8 @@
 const api = require('../../utils/api');
 const util = require('../../utils/util');
 
-const MOODS = [
-  { key: 'sweet', emoji: '🥰', label: '甜甜' },
-  { key: 'happy', emoji: '😄', label: '开心' },
-  { key: 'calm', emoji: '🙂', label: '平静' },
-  { key: 'sad', emoji: '🥺', label: '委屈' },
-  { key: 'angry', emoji: '😤', label: '生气' }
-];
+const MOODS = util.MOODS;
+const PRESET_TAGS = util.PRESET_TAGS;
 
 Page({
   data: {
@@ -22,6 +17,7 @@ Page({
     tagInput: '',
     images: [],       // { fileId, tempUrl } 已上传的
     localImages: [],  // { tempPath } 待上传
+    presetTags: PRESET_TAGS,
     /* 语音 */
     audio: null,      // { fileId } 已上传的 / { tempPath, duration } 待上传的
     recording: false,
@@ -107,6 +103,15 @@ Page({
       return;
     }
     this.setData({ tags: this.data.tags.concat([t]), tagInput: '' });
+  },
+
+  quickTag(e) {
+    const t = e.currentTarget.dataset.tag;
+    const tags = this.data.tags.slice();
+    const at = tags.indexOf(t);
+    if (at >= 0) tags.splice(at, 1);
+    else if (tags.length < 12) tags.push(t);
+    this.setData({ tags: tags });
   },
   removeTag(e) {
     const i = Number(e.currentTarget.dataset.i);

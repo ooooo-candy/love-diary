@@ -145,6 +145,7 @@ exports.main = async (event) => {
         anniversary: oldBook.anniversary || '',
         myAvatar: myAvatarFile,
         partnerAvatar: partnerAvatarFile,
+        events: oldBook.events || [],
         wishes: oldBook.wishes || [],
         miss: oldBook.miss ? { date: oldBook.miss.date, counts: mapKeys(oldBook.miss.counts || {}) } : null,
         missEvents: (oldBook.missEvents || []).map((e) => ({ ...e, from: mapUid(uidMap, e.from) })),

@@ -8,15 +8,14 @@ Page({
     days: 0,
     recCount: 0,
     photoCount: 0,
+    streakCount: 0,
+    moodBars: [],
+    calendar: null,
     partnerJoined: false,
     partnerInfo: null,
     code: '',
-    /* 迁移状态 */
     needMigrate: false,
-    migrated: false,
-    /* 小程序码 */
     qrFileId: '',
-    /* 编辑资料弹层 */
     showEdit: false,
     myName: '',
     partnerName: '',
@@ -32,11 +31,8 @@ Page({
     try {
       const data = await api.call('book', { action: 'get' });
       app.globalData.book = data.book;
-      const records = app.globalData.records || [];
-      if (!records.length) {
-        const rd = await api.call('records', { action: 'list' });
-        app.globalData.records = rd.records;
-      }
+      const rd = await api.call('records', { action: 'list' });
+      app.globalData.records = rd.records;
       this.render();
     } catch (err) {
       api.toastErr(err);
@@ -49,31 +45,61 @@ Page({
     const records = app.globalData.records || [];
     const user = app.globalData.user || {};
     const photoCount = records.reduce((n, r) => n + (r.images || []).length, 0);
+
+    /* 心情分布 */
+    const moodBars = util.MOODS.map((m) => {
+      const n = records.filter((r) => r.mood === m.key).length;
+      return { emoji: m.emoji, label: m.label, n: n };
+    });
+    const max = Math.max.apply(null, [1].concat(moodBars.map((m) => m.n)));
+    moodBars.forEach((m) => { m.pct = Math.round((m.n / max) * 100); });
+
     this.setData({
       book: book,
       user: user,
       days: util.loveDays(book.anniversary),
       recCount: records.length,
       photoCount: photoCount,
+      streakCount: util.streak(records),
+      moodBars: moodBars,
+      calendar: this.buildCalendar(records),
       partnerJoined: !!book.partnerJoined,
       partnerInfo: book.partnerInfo || null,
       code: book.code || '',
-      migrated: !!wx.getStorageSync('migrated'),
       needMigrate: records.length === 0 && !wx.getStorageSync('migrated')
     });
+  },
+
+  buildCalendar(records) {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const first = new Date(y, m, 1);
+    const days = new Date(y, m + 1, 0).getDate();
+    const has = {};
+    records.forEach((r) => { if (r.date) has[r.date] = true; });
+    const cells = [];
+    for (let i = 0; i < first.getDay(); i++) cells.push({ blank: true });
+    for (let d = 1; d <= days; d++) {
+      const key = y + '-' + util.pad2(m + 1) + '-' + util.pad2(d);
+      cells.push({ d: d, hasRec: !!has[key], today: key === util.todayStr() });
+    }
+    return {
+      label: y + ' 年 ' + (m + 1) + ' 月',
+      blanks: new Array(first.getDay()).fill(''),
+      cells: cells
+    };
   },
 
   copyCode() {
     wx.setClipboardData({ data: this.data.code });
   },
 
-  /* 重试导入旧数据 */
   retryMigrate() {
     wx.removeStorageSync('migrated');
     wx.reLaunch({ url: '/pages/login/login' });
   },
 
-  /* 分享卡片邀请 TA */
   onShareAppMessage() {
     return {
       title: '来和我一起记录我们的日子 ❤',
@@ -81,7 +107,6 @@ Page({
     };
   },
 
-  /* 生成小程序码 */
   async showQrcode() {
     if (!this.data.code) return;
     wx.showLoading({ title: '生成中…', mask: true });
@@ -141,12 +166,8 @@ Page({
     try {
       const choose = await new Promise((resolve, reject) => {
         wx.chooseMedia({
-          count: 1,
-          mediaType: ['image'],
-          sourceType: ['album', 'camera'],
-          sizeType: ['compressed'],
-          success: resolve,
-          fail: reject
+          count: 1, mediaType: ['image'], sourceType: ['album', 'camera'], sizeType: ['compressed'],
+          success: resolve, fail: reject
         });
       });
       const tempPath = choose.tempFiles[0].tempFilePath;
@@ -155,8 +176,7 @@ Page({
         wx.cloud.uploadFile({
           cloudPath: 'avatars/' + app.globalData.user._id + '/' + Date.now() + '.jpg',
           filePath: tempPath,
-          success: resolve,
-          fail: reject
+          success: resolve, fail: reject
         });
       });
       const up = await api.call('user', { action: 'updateProfile', avatar: res.fileID });

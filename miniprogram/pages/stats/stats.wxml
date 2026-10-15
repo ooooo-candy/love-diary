@@ -7,56 +7,80 @@
     </view>
     <view class="me-main">
       <view class="me-name">{{user.nickname || '我'}}</view>
-      <view class="me-sub">{{book.code ? '本子 ' + book.code : ''}}</view>
+      <view class="me-sub">微信登录 · 已同步到云端</view>
     </view>
     <button class="btn btn-ghost btn-sm" bindtap="openEdit">编辑资料</button>
   </view>
 
-  <!-- 数字统计 -->
-  <view class="stat-row">
-    <view class="stat">
-      <view class="n">{{days}}</view>
-      <view class="l">天在一起</view>
+  <!-- 对方 -->
+  <view class="card partner-card" wx:if="{{partnerJoined && partnerInfo}}">
+    <view class="avatar avatar-sm">
+      <image wx:if="{{partnerInfo.avatar}}" src="{{partnerInfo.avatar}}" mode="aspectFill" />
+      <text wx:else>{{partnerInfo.nickname[0]}}</text>
     </view>
-    <view class="stat">
+    <view class="me-main">
+      <view class="me-name">{{partnerInfo.nickname}}</view>
+      <view class="me-sub">已加入你们的小日子</view>
+    </view>
+    <text class="online-dot"><i></i>在线</text>
+    <view class="love-line">❤️ 你们正在共享同一本记录</view>
+  </view>
+
+  <!-- 数据格子 -->
+  <view class="grid">
+    <view class="cell hero-cell">
+      <view class="n">{{days}}</view>
+      <view class="l">在一起的天数</view>
+    </view>
+    <view class="cell">
       <view class="n">{{recCount}}</view>
       <view class="l">条记录</view>
     </view>
-    <view class="stat">
+    <view class="cell">
       <view class="n">{{photoCount}}</view>
       <view class="l">张照片</view>
     </view>
+    <view class="cell">
+      <view class="n">{{streakCount}}</view>
+      <view class="l">连续记录天数</view>
+    </view>
   </view>
 
-  <!-- 对方信息 / 邀请码 -->
+  <!-- 心情分布 -->
+  <view class="section-title">心情分布</view>
   <view class="card">
-    <block wx:if="{{partnerJoined && partnerInfo}}">
-      <view class="section-title" style="margin:0 0 16rpx">TA</view>
-      <view class="partner">
-        <view class="avatar avatar-sm">
-          <image wx:if="{{partnerInfo.avatar}}" src="{{partnerInfo.avatar}}" mode="aspectFill" />
-          <text wx:else>{{partnerInfo.nickname[0]}}</text>
-        </view>
-        <view class="me-main">
-          <view class="me-name">{{partnerInfo.nickname}}</view>
-          <view class="me-sub">已加入 · 你们共享同一本</view>
-        </view>
-        <text class="dot on"></text>
-      </view>
-      <view class="love-line">❤️ 你们正在共享同一本记录</view>
-    </block>
-    <block wx:else>
-      <view class="section-title" style="margin:0 0 16rpx">等 TA 加入</view>
-      <view class="invite" bindtap="copyCode">
-        <text class="i-label">情侣本邀请码（点击复制）</text>
-        <text class="i-code">{{code}}</text>
-        <text class="i-hint">把邀请码发给 TA，TA 在小程序里输入即可</text>
-      </view>
-      <view class="invite-actions">
-        <button class="btn btn-ghost btn-sm" open-type="share">微信发给 TA</button>
-        <button class="btn btn-ghost btn-sm" bindtap="showQrcode">生成二维码</button>
-      </view>
-    </block>
+    <view class="mood-row" wx:for="{{moodBars}}" wx:key="label">
+      <text class="mood-emoji">{{item.emoji}}</text>
+      <view class="mood-track"><view class="mood-fill" style="width:{{item.pct}}%"></view></view>
+      <text class="mood-n">{{item.n}}</text>
+    </view>
+  </view>
+
+  <!-- 本月日历 -->
+  <view class="section-title">{{calendar.label}}</view>
+  <view class="card">
+    <view class="cal-week">
+      <text wx:for="{{['日','一','二','三','四','五','六']}}" wx:key="*this">{{item}}</text>
+    </view>
+    <view class="cal-grid">
+      <view class="cal-cell" wx:for="{{calendar.blanks}}" wx:key="*this"></view>
+      <view class="cal-cell {{item.hasRec ? 'has' : ''}} {{item.today ? 'today' : ''}}" wx:for="{{calendar.cells}}" wx:key="index">{{item.d}}</view>
+    </view>
+    <view class="cal-hint">亮起的日子有记录</view>
+  </view>
+
+  <!-- 邀请 / 对方 -->
+  <view class="card" wx:if="{{!partnerJoined}}">
+    <view class="section-title" style="margin:0 0 16rpx">等 TA 加入</view>
+    <view class="invite" bindtap="copyCode">
+      <text class="i-label">情侣本邀请码（点击复制）</text>
+      <text class="i-code">{{code}}</text>
+      <text class="i-hint">把邀请码发给 TA，TA 在小程序里输入即可</text>
+    </view>
+    <view class="invite-actions">
+      <button class="btn btn-ghost btn-sm" open-type="share">微信发给 TA</button>
+      <button class="btn btn-ghost btn-sm" bindtap="showQrcode">生成二维码</button>
+    </view>
   </view>
 
   <!-- 导入旧数据 -->
@@ -70,17 +94,6 @@
   </view>
 
   <view class="foot">朝暮 · 记录在一起的每一天 ☁️</view>
-
-  <!-- 小程序码弹层 -->
-  <view class="mask" wx:if="{{showQr}}" bindtap="closeQr">
-    <view class="sheet qr-sheet" catchtap="">
-      <view class="sheet-title">TA 扫码直接加入</view>
-      <image class="qr-img" src="{{qrUrl}}" mode="aspectFit" />
-      <view class="qr-hint">让 TA 用微信「扫一扫」</view>
-      <button class="btn btn-primary btn-block" bindtap="saveQr">保存到相册</button>
-      <button class="btn btn-ghost btn-block close-btn" bindtap="closeQr">关闭</button>
-    </view>
-  </view>
 
   <!-- 编辑资料弹层 -->
   <view class="mask" wx:if="{{showEdit}}" bindtap="closeEdit">
@@ -108,6 +121,17 @@
         </picker>
       </view>
       <button class="btn btn-primary btn-block" disabled="{{busy}}" bindtap="saveEdit">保存</button>
+    </view>
+  </view>
+
+  <!-- 小程序码弹层 -->
+  <view class="mask" wx:if="{{showQr}}" bindtap="closeQr">
+    <view class="sheet qr-sheet" catchtap="">
+      <view class="sheet-title">TA 扫码直接加入</view>
+      <image class="qr-img" src="{{qrUrl}}" mode="aspectFit" />
+      <view class="qr-hint">让 TA 用微信「扫一扫」</view>
+      <button class="btn btn-primary btn-block" bindtap="saveQr">保存到相册</button>
+      <button class="btn btn-ghost btn-block close-btn" bindtap="closeQr">关闭</button>
     </view>
   </view>
 </view>

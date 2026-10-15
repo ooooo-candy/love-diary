@@ -5,7 +5,7 @@
   text-align: center;
   color: #fff;
   background: linear-gradient(135deg, var(--brand), var(--brand-2));
-  box-shadow: 0 16rpx 40rpx -18rpx rgba(255, 107, 157, .7);
+  box-shadow: 0 16rpx 40rpx -18rpx rgba(255, 107, 157, .55);
   position: relative;
   overflow: hidden;
 }
@@ -40,48 +40,77 @@
 .code { font-size: 52rpx; font-weight: 900; letter-spacing: 14rpx; }
 .code-hint { font-size: 20rpx; opacity: .8; }
 
-.today-card { display: flex; align-items: center; gap: 20rpx; }
-.today-emoji { font-size: 56rpx; }
-.today-text { flex: 1; }
-.t1 { font-size: 28rpx; font-weight: 700; }
-.t2 { font-size: 22rpx; color: var(--text-dim); margin-top: 4rpx; }
-
-.card-row { display: flex; align-items: center; gap: 18rpx; }
-.card-emoji { font-size: 46rpx; }
-.card-main { flex: 1; min-width: 0; }
-.card-title { font-size: 29rpx; font-weight: 800; }
+/* 通用块卡片（原版样式） */
+.block-card { margin-bottom: 22rpx; }
+.card-head { display: flex; align-items: center; justify-content: space-between; }
+.card-label { font-size: 27rpx; font-weight: 800; }
+.card-link { font-size: 23rpx; font-weight: 700; color: var(--brand); }
+.card-arrow { color: var(--text-dim); font-size: 34rpx; }
 .card-sub {
-  font-size: 23rpx; color: var(--text-dim); margin-top: 6rpx;
+  font-size: 23rpx; color: var(--text-dim); margin-top: 12rpx;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.card-badge {
-  font-size: 22rpx; font-weight: 700; color: var(--brand);
-  background: var(--brand-soft);
-  padding: 8rpx 18rpx; border-radius: 999rpx; flex: none;
+
+.dq-q { font-size: 29rpx; font-weight: 800; margin: 18rpx 0 20rpx; line-height: 1.5; }
+.dq-row {
+  display: flex; align-items: center; gap: 16rpx;
+  background: var(--bg-2);
+  border-radius: 14rpx; padding: 18rpx 20rpx;
+  margin-bottom: 14rpx;
 }
-.card-badge.ok { color: #12a150; background: #e8f9ef; }
-.card-arrow { color: var(--text-dim); font-size: 34rpx; }
-.dq-card { margin-bottom: 20rpx; }
-.dq-partner {
-  margin-top: 16rpx; padding: 16rpx 20rpx;
-  background: var(--brand-soft); border-radius: var(--r-sm);
-  font-size: 24rpx; color: var(--text); line-height: 1.6;
+.dq-row:last-child { margin-bottom: 0; }
+.dq-tag {
+  flex: none;
+  font-size: 21rpx; font-weight: 800;
+  color: var(--brand); background: var(--brand-soft);
+  border-radius: 8rpx; padding: 6rpx 12rpx;
 }
-.dq-partner.dim { color: var(--text-dim); }
+.dq-tag.ta { color: var(--brand-2); background: rgba(167, 139, 250, .14); }
+.dq-ans { font-size: 25rpx; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dq-ans.dim { color: var(--text-dim); }
+
+.section-title { font-size: 26rpx; font-weight: 800; color: var(--text-dim); margin: 8rpx 32rpx 16rpx; display: flex; justify-content: space-between; }
+.more { color: var(--brand); font-weight: 700; }
+
+.event-row { display: flex; align-items: center; gap: 18rpx; padding: 14rpx 0; }
+.event-row:last-child { padding-bottom: 0; }
+.event-icon { font-size: 40rpx; }
+.event-main { flex: 1; min-width: 0; }
+.event-name { font-size: 27rpx; font-weight: 700; }
+.event-date { font-size: 21rpx; color: var(--text-dim); margin-top: 2rpx; }
+.event-count {
+  flex: none; font-size: 22rpx; font-weight: 800;
+  color: var(--brand); background: var(--brand-soft);
+  border-radius: 999rpx; padding: 8rpx 18rpx;
+}
+.event-count.today { color: #fff; background: linear-gradient(135deg, var(--brand), var(--brand-2)); }
+.mini-empty { font-size: 23rpx; color: var(--text-dim); text-align: center; padding: 16rpx 0; }
+
 .wish-bar {
-  margin-top: 16rpx; height: 12rpx; border-radius: 999rpx;
+  margin-top: 18rpx; height: 12rpx; border-radius: 999rpx;
   background: var(--bg-2); overflow: hidden;
 }
 .wish-fill { height: 100%; border-radius: 999rpx; background: linear-gradient(90deg, var(--brand), var(--brand-2)); }
 
-.more { color: var(--brand); font-weight: 700; }
-
 .rec-head { display: flex; align-items: center; gap: 16rpx; }
 .mood { font-size: 44rpx; }
-.rec-title { font-size: 28rpx; font-weight: 700; }
-.rec-date { font-size: 22rpx; color: var(--text-dim); margin-top: 2rpx; }
+.rec-meta { flex: 1; min-width: 0; }
+.rec-date { font-size: 24rpx; font-weight: 700; }
+.rec-author { font-size: 21rpx; color: var(--text-dim); margin-top: 4rpx; }
+.rec-title { font-size: 30rpx; font-weight: 800; margin-top: 14rpx; }
 .rec-note { font-size: 25rpx; color: var(--text); margin-top: 12rpx; line-height: 1.6; }
-.rec-cover { width: 100%; height: 280rpx; border-radius: var(--r-sm); margin-top: 14rpx; }
+.rec-cover { width: 100%; height: 320rpx; border-radius: var(--r-sm); margin-top: 14rpx; }
+.rec-foot {
+  display: flex; gap: 16rpx;
+  margin-top: 16rpx; padding-top: 14rpx;
+  border-top: 1rpx dashed var(--border);
+}
+.foot-btn {
+  display: inline-flex; align-items: center; gap: 8rpx;
+  font-size: 24rpx; font-weight: 700; color: var(--text-dim);
+  background: var(--bg-2);
+  border-radius: 999rpx; padding: 10rpx 22rpx;
+}
 
 .fab {
   position: fixed; right: 40rpx; bottom: 60rpx;
@@ -93,12 +122,8 @@
   z-index: 10;
 }
 
-/* 爱心雨 */
 .rain { position: fixed; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 999; overflow: hidden; }
-.rain-heart {
-  position: absolute; top: -60rpx;
-  animation: rainFall 3.6s ease-in forwards;
-}
+.rain-heart { position: absolute; top: -60rpx; animation: rainFall 3.6s ease-in forwards; }
 @keyframes rainFall {
   0% { transform: translateY(0) scale(.6) rotate(-8deg); opacity: 0; }
   12% { opacity: 1; }

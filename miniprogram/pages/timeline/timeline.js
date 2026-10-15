@@ -48,6 +48,8 @@ Page({
         note: r.note || '',
         place: r.place || '',
         mood: MOODS[r.mood] || '🥰',
+        tags: r.tags || [],
+        dateText: util.fmtDate(r.date) + ' · ' + util.weekday(r.date) + (util.relativeDay(r.date) ? ' · ' + util.relativeDay(r.date) : ''),
         authorName: r.authorName || '',
         thumbs: (r.images || []).slice(0, 3).map((i) => i.fileId),
         more: Math.max(0, (r.images || []).length - 3),

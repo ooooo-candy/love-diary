@@ -33,8 +33,11 @@
 
     <view class="field">
       <text class="field-label">标签</text>
+      <view class="chips tag-chips" style="margin-bottom:12rpx">
+        <view class="chip {{tags.indexOf(item) >= 0 ? 'on' : ''}}" wx:for="{{presetTags}}" wx:key="*this" bindtap="quickTag" data-tag="{{item}}">#{{item}}</view>
+      </view>
       <view class="row">
-        <input class="input tag-input" maxlength="16" placeholder="回车或点添加" value="{{tagInput}}" bindinput="onTagInput" bindconfirm="addTag" />
+        <input class="input tag-input" maxlength="16" placeholder="自定义标签，回车添加" value="{{tagInput}}" bindinput="onTagInput" bindconfirm="addTag" />
         <button class="btn btn-ghost btn-sm" bindtap="addTag">添加</button>
       </view>
       <view class="chips tag-chips" wx:if="{{tags.length}}">

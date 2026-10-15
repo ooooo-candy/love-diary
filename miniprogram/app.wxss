@@ -17,6 +17,18 @@ page {
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif;
 }
 
+@media (prefers-color-scheme: dark) {
+  page {
+    --brand-soft: #331f2a;
+    --bg: #171019;
+    --bg-2: #2b202f;
+    --card: #241b28;
+    --text: #f3e6ec;
+    --text-dim: #9c8290;
+    --border: #352838;
+  }
+}
+
 .card {
   background: var(--card);
   border-radius: var(--r-md);

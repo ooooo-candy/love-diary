@@ -17,6 +17,17 @@
 
 .note { font-size: 26rpx; line-height: 1.7; margin-top: 14rpx; white-space: pre-wrap; }
 
+.rec-title { font-size: 30rpx; font-weight: 800; margin-top: 14rpx; }
+.rec-date { font-size: 24rpx; font-weight: 700; }
+.rec-sub { font-size: 21rpx; color: var(--text-dim); margin-top: 4rpx; }
+
+.tag-chips { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 14rpx; }
+.tag-chip {
+  font-size: 21rpx; font-weight: 700; color: var(--brand);
+  background: var(--brand-soft);
+  border-radius: 999rpx; padding: 6rpx 18rpx;
+}
+
 .voice-line {
   display: inline-flex; align-items: center; gap: 8rpx;
   margin-top: 14rpx;

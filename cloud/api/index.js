@@ -1223,6 +1223,7 @@ const handlers = {
         partnerAvatar: b.partnerAvatar || null,
         createdBy: b.createdBy || '',
         members: b.members || [],
+        events: b.events || [],
         wishes: b.wishes || [],
         miss: b.miss || null,
         missEvents: b.missEvents || [],

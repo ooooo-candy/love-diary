@@ -1,8 +1,6 @@
 const api = require('../../utils/api');
 const util = require('../../utils/util');
 
-const MOODS = { sweet: '🥰', happy: '😄', calm: '🙂', sad: '🥺', angry: '😤' };
-
 Page({
   data: {
     book: null,
@@ -12,18 +10,17 @@ Page({
     latest: [],
     code: '',
     partnerJoined: false,
-    /* 想你 */
     myMiss: 0,
     partnerMiss: 0,
-    /* 每日一问 */
     daily: null,
     dailyMine: '',
     dailyPartner: '',
     dailyAnswered: false,
-    /* 心愿 */
     wishTotal: 0,
     wishDone: 0,
-    wishPct: 0
+    wishPct: 0,
+    wishLatest: '',
+    events: []
   },
 
   onShow() {
@@ -56,15 +53,18 @@ Page({
     const records = app.globalData.records || [];
     const myId = (app.globalData.user && app.globalData.user._id) || '';
     const today = util.todayStr();
+
     const latest = records.slice(0, 3).map((r) => ({
       _id: r._id,
-      date: r.date,
-      dateShort: util.fmtDateShort(r.date),
-      rel: util.relativeDay(r.date),
-      title: r.title || '（无标题）',
-      note: (r.note || '').slice(0, 60),
-      mood: MOODS[r.mood] || '🥰',
-      cover: (r.images && r.images[0] && r.images[0].fileId) || ''
+      mood: (util.MOOD_MAP[r.mood] || { emoji: '🥰' }).emoji,
+      dateText: util.fmtDate(r.date) + ' · ' + util.weekday(r.date) + (util.relativeDay(r.date) ? ' · ' + util.relativeDay(r.date) : ''),
+      title: r.title || '',
+      note: (r.note || '').slice(0, 80),
+      place: r.place || '',
+      authorName: r.authorName || '',
+      cover: (r.images && r.images[0] && r.images[0].fileId) || '',
+      likeCount: (r.likes || []).length,
+      commentCount: (r.comments || []).length
     }));
 
     const daily = book.daily || null;
@@ -72,6 +72,7 @@ Page({
     const dailyPartner = daily && daily.answers ? daily.answers[book.partnerId] || '' : '';
     const wishes = book.wishes || [];
     const wishDone = wishes.filter((w) => w.done).length;
+    const lastWish = wishes.length ? wishes[wishes.length - 1].text : '';
 
     this.setData({
       book: book,
@@ -89,11 +90,18 @@ Page({
       dailyAnswered: !!dailyMine,
       wishTotal: wishes.length,
       wishDone: wishDone,
-      wishPct: wishes.length ? Math.round((wishDone / wishes.length) * 100) : 0
+      wishPct: wishes.length ? Math.round((wishDone / wishes.length) * 100) : 0,
+      wishLatest: lastWish,
+      events: util.upcomingEvents(book).slice(0, 3).map((ev) => ({
+        id: ev.id,
+        icon: ev.icon,
+        name: ev.name,
+        dateShort: util.fmtDateShort(ev.date),
+        label: ev.label || '',
+        text: ev.isToday ? '就是今天' : ev.diff <= 0 ? '今天' : '还有 ' + ev.diff + ' 天'
+      }))
     });
   },
-
-  /* ---------- 悄悄话·想你 ---------- */
 
   async sendMiss() {
     try {
@@ -143,7 +151,6 @@ Page({
     this.polling = false;
   },
 
-  /* 满屏爱心雨 */
   rain(n) {
     const hearts = [];
     const emojis = ['💗', '💖', '💕', '❤️', '💘'];
@@ -164,12 +171,12 @@ Page({
   goWishes() { wx.navigateTo({ url: '/pages/wishes/wishes' }); },
   goWheel() { wx.navigateTo({ url: '/pages/wheel/wheel' }); },
   goDaily() { wx.navigateTo({ url: '/pages/daily/daily' }); },
+  goEvents() { wx.navigateTo({ url: '/pages/events/events' }); },
 
   copyCode() {
     wx.setClipboardData({ data: this.data.code });
   },
 
-  /* 分享卡片邀请 TA */
   onShareAppMessage() {
     return {
       title: '来和我一起记录我们的日子 ❤',

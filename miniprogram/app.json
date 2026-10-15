@@ -9,20 +9,21 @@
     "pages/compose/compose",
     "pages/wishes/wishes",
     "pages/daily/daily",
-    "pages/wheel/wheel"
+    "pages/wheel/wheel",
+    "pages/events/events"
   ],
   "window": {
-    "navigationBarBackgroundColor": "#ff6b9d",
+    "navigationBarBackgroundColor": "@navBgColor",
     "navigationBarTitleText": "朝暮",
-    "navigationBarTextStyle": "white",
-    "backgroundColor": "#fff7fa",
-    "backgroundTextStyle": "light"
+    "navigationBarTextStyle": "@navTxtStyle",
+    "backgroundColor": "@bgColor",
+    "backgroundTextStyle": "@bgTxtStyle"
   },
   "tabBar": {
-    "color": "#b9a3ad",
-    "selectedColor": "#ff6b9d",
-    "backgroundColor": "#ffffff",
-    "borderStyle": "white",
+    "color": "@tabColor",
+    "selectedColor": "@tabSelectedColor",
+    "backgroundColor": "@tabBgColor",
+    "borderStyle": "@tabBorderStyle",
     "list": [
       { "pagePath": "pages/home/home", "text": "首页" },
       { "pagePath": "pages/timeline/timeline", "text": "时光轴" },
@@ -30,6 +31,8 @@
       { "pagePath": "pages/stats/stats", "text": "我们" }
     ]
   },
+  "darkmode": true,
+  "themeLocation": "theme.json",
   "style": "v2",
   "sitemapLocation": "sitemap.json",
   "lazyCodeLoading": "requiredComponents"

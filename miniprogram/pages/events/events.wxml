@@ -1,0 +1,81 @@
+<view class="page">
+  <view class="card">
+    <view class="event-row" wx:for="{{events}}" wx:key="id">
+      <text class="event-icon">{{item.icon || '📅'}}</text>
+      <view class="event-main">
+        <view class="event-name">{{item.name}}</view>
+        <view class="event-date">
+          {{item.calendar === 'lunar' ? '农历 ' + item.lunarMonth + '月' + item.lunarDay + '日' : item.date}}{{item.yearly ? ' · 每年' : ''}}
+        </view>
+      </view>
+      <text class="mini-op" bindtap="openEdit" data-id="{{item.id}}">✏️</text>
+      <text class="mini-op" bindtap="remove" data-id="{{item.id}}">🗑</text>
+    </view>
+    <view wx:if="{{!events.length}}" class="mini-empty">还没有添加，下面可以加一个</view>
+  </view>
+
+  <button class="btn btn-primary btn-block add-btn" bindtap="openAdd">＋ 添加重要日子</button>
+  <view class="hint">生日可以选农历（阴历），到时候会自动换算成当年的公历日期</view>
+
+  <!-- 表单 -->
+  <view class="mask" wx:if="{{showForm}}" bindtap="closeForm">
+    <view class="sheet" catchtap="">
+      <view class="sheet-title">{{editId ? '编辑重要日子' : '添加重要日子'}}</view>
+
+      <view class="field">
+        <text class="field-label">名称</text>
+        <input class="input" maxlength="20" placeholder="比如：萌萌的生日" value="{{name}}" bindinput="onName" />
+      </view>
+
+      <view class="field">
+        <text class="field-label">图标</text>
+        <view class="chips">
+          <view class="chip icon-chip {{icon === item ? 'on' : ''}}" wx:for="{{icons}}" wx:key="*this" bindtap="pickIcon" data-icon="{{item}}">{{item}}</view>
+        </view>
+      </view>
+
+      <view class="field">
+        <text class="field-label">日期类型</text>
+        <view class="chips">
+          <view class="chip {{calendar === 'solar' ? 'on' : ''}}" bindtap="pickCalendar" data-v="solar">公历</view>
+          <view class="chip {{calendar === 'lunar' ? 'on' : ''}}" bindtap="pickCalendar" data-v="lunar">农历</view>
+        </view>
+      </view>
+
+      <view class="field" wx:if="{{calendar === 'solar'}}">
+        <text class="field-label">日期</text>
+        <picker mode="date" value="{{date}}" bindchange="onDate"><view class="input">{{date}}</view></picker>
+      </view>
+
+      <block wx:if="{{calendar === 'lunar'}}">
+        <view class="field">
+          <text class="field-label">农历月</text>
+          <picker mode="selector" range="{{[1,2,3,4,5,6,7,8,9,10,11,12]}}" value="{{lunarMonth - 1}}" bindchange="onLunarMonth">
+            <view class="input">农历 {{lunarMonth}} 月{{lunarIsLeap ? '（闰月）' : ''}}</view>
+          </picker>
+        </view>
+        <view class="field">
+          <text class="field-label">农历日</text>
+          <picker mode="selector" range="{{[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]}}" value="{{lunarDay - 1}}" bindchange="onLunarDay">
+            <view class="input">初{{lunarDay <= 10 ? lunarDay : lunarDay}}日</view>
+          </picker>
+        </view>
+        <view class="switch-row" bindtap="toggleLeap">
+          <text>闰月</text>
+          <switch checked="{{lunarIsLeap}}" color="#ff6b9d" />
+        </view>
+        <view class="field" wx:if="{{!yearly}}">
+          <text class="field-label">农历年份（仅一次的日子填）</text>
+          <input class="input" type="number" maxlength="4" placeholder="比如 2026" value="{{lunarYear}}" bindinput="onLunarYear" />
+        </view>
+      </block>
+
+      <view class="switch-row" bindtap="toggleYearly">
+        <text>每年重复</text>
+        <switch checked="{{yearly}}" color="#ff6b9d" />
+      </view>
+
+      <button class="btn btn-primary btn-block" disabled="{{busy}}" bindtap="save">保存</button>
+    </view>
+  </view>
+</view>

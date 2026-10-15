@@ -8,17 +8,19 @@
       <view class="rec-head">
         <text class="mood">{{rec.mood}}</text>
         <view class="rec-meta">
-          <view class="rec-title" wx:if="{{rec.title}}">{{rec.title}}</view>
-          <view class="rec-sub">
-            {{rec.authorName}}{{rec.place ? ' · 📍' + rec.place : ''}}{{rec.imageCount ? ' · 📷' + rec.imageCount : ''}}
-          </view>
+          <view class="rec-date">{{rec.dateText}}</view>
+          <view class="rec-sub" wx:if="{{rec.authorName || rec.place}}">✍️ {{rec.authorName}}{{rec.place ? ' · 📍' + rec.place : ''}}</view>
         </view>
         <view class="ops">
           <text class="op" bindtap="edit" data-id="{{rec._id}}">✎</text>
           <text class="op del" bindtap="remove" data-id="{{rec._id}}">🗑</text>
         </view>
       </view>
+      <view class="rec-title" wx:if="{{rec.title}}">{{rec.title}}</view>
       <view class="note" wx:if="{{rec.note}}">{{rec.note}}</view>
+      <view class="tag-chips" wx:if="{{rec.tags.length}}">
+        <text class="tag-chip" wx:for="{{rec.tags}}" wx:key="*this">#{{item}}</text>
+      </view>
       <view class="voice-line" wx:if="{{rec.hasAudio}}" bindtap="playVoice" data-id="{{rec._id}}">
         {{playingId === rec._id ? '⏸ 播放中' : '▶ 语音日记'}} {{rec.audioDuration ? rec.audioDuration + '″' : ''}}
       </view>

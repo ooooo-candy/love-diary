@@ -22,66 +22,73 @@
   </view>
 </view>
 
-<view class="card today-card">
-  <view class="today-emoji">{{hasToday ? '✅' : '📝'}}</view>
-  <view class="today-text">
-    <view class="t1">{{hasToday ? '今天已经记录过啦' : '今天还没写点什么'}}</view>
-    <view class="t2">{{hasToday ? '也再来一条？美好不嫌多' : '记下此刻的心情吧'}}</view>
+<!-- 每日一问（原版样式：我 / TA 两行） -->
+<view class="card block-card" bindtap="goDaily">
+  <view class="card-head">
+    <text class="card-label">💬 今日一问</text>
+    <text class="card-link">回顾</text>
   </view>
-  <button class="btn btn-primary btn-sm" bindtap="goCompose">写一条</button>
+  <view class="dq-q">{{daily.question}}</view>
+  <view class="dq-row">
+    <text class="dq-tag">我</text>
+    <text class="dq-ans {{dailyMine ? '' : 'dim'}}">{{dailyMine || '还没回答，点这里写'}}</text>
+  </view>
+  <view class="dq-row">
+    <text class="dq-tag ta">TA</text>
+    <text class="dq-ans dim">{{dailyPartner || '还没回答'}}</text>
+  </view>
 </view>
 
-<!-- 每日一问 -->
-<view class="card dq-card" bindtap="goDaily">
-  <view class="card-row">
-    <text class="card-emoji">💬</text>
-    <view class="card-main">
-      <view class="card-title">今日一问</view>
-      <view class="card-sub">{{daily.question}}</view>
+<!-- 重要日子 -->
+<view class="section-title">重要日子<text class="more" bindtap="goEvents">管理</text></view>
+<view class="card">
+  <view class="event-row" wx:for="{{events}}" wx:key="id">
+    <text class="event-icon">{{item.icon}}</text>
+    <view class="event-main">
+      <view class="event-name">{{item.name}}</view>
+      <view class="event-date">{{item.dateShort}}{{item.label ? ' · ' + item.label : ''}}</view>
     </view>
-    <text class="card-badge {{dailyAnswered ? 'ok' : ''}}">{{dailyAnswered ? '已回答' : '去回答'}}</text>
+    <text class="event-count {{item.isToday ? 'today' : ''}}">{{item.text}}</text>
   </view>
-  <view wx:if="{{dailyAnswered && dailyPartner}}" class="dq-partner">TA 的回答：{{dailyPartner}}</view>
-  <view wx:elif="{{dailyAnswered}}" class="dq-partner dim">答完了就能看到 TA 的回答</view>
+  <view wx:if="{{!events.length}}" class="mini-empty">还没有重要日子，点右上角「管理」添加</view>
 </view>
 
 <!-- 心愿清单 -->
-<view class="card dq-card" bindtap="goWishes">
-  <view class="card-row">
-    <text class="card-emoji">⭐</text>
-    <view class="card-main">
-      <view class="card-title">心愿清单</view>
-      <view class="card-sub" wx:if="{{wishTotal}}">已点亮 {{wishDone}}/{{wishTotal}} 个心愿</view>
-      <view class="card-sub" wx:else>把想一起做的事都写下来</view>
-    </view>
-    <text class="card-arrow">›</text>
+<view class="card block-card" bindtap="goWishes">
+  <view class="card-head">
+    <text class="card-label">✨ 心愿清单</text>
+    <text class="card-link">{{wishDone}} / {{wishTotal}} 已完成</text>
   </view>
-  <view wx:if="{{wishTotal}}" class="wish-bar"><view class="wish-fill" style="width:{{wishPct}}%"></view></view>
+  <view class="wish-bar"><view class="wish-fill" style="width:{{wishPct}}%"></view></view>
+  <view class="card-sub" wx:if="{{wishLatest}}">最近的心愿：{{wishLatest}}</view>
+  <view class="card-sub" wx:else>把想一起做的事都写下来</view>
 </view>
 
 <!-- 纠结转盘 -->
-<view class="card dq-card" bindtap="goWheel">
-  <view class="card-row">
-    <text class="card-emoji">🎯</text>
-    <view class="card-main">
-      <view class="card-title">纠结转盘</view>
-      <view class="card-sub">吃什么、去哪玩、谁洗碗？让缘分决定</view>
-    </view>
+<view class="card block-card" bindtap="goWheel">
+  <view class="card-head">
+    <text class="card-label">🥺 选择困难症发作？</text>
     <text class="card-arrow">›</text>
   </view>
+  <view class="card-sub">吃什么、去哪玩…让转盘帮你们决定</view>
 </view>
 
-<view class="section-title">最近的记录<text class="more" bindtap="goTimeline">全部 ›</text></view>
+<view class="section-title">最近的小日子<text class="more" bindtap="goTimeline">全部 ›</text></view>
 <view class="card rec" wx:for="{{latest}}" wx:key="_id">
   <view class="rec-head">
     <text class="mood">{{item.mood}}</text>
     <view class="rec-meta">
-      <view class="rec-title">{{item.title}}</view>
-      <view class="rec-date">{{item.dateShort}}{{item.rel ? ' · ' + item.rel : ''}}</view>
+      <view class="rec-date">{{item.dateText}}</view>
+      <view class="rec-author" wx:if="{{item.authorName}}">✍️ {{item.authorName}}{{item.place ? ' · 📍' + item.place : ''}}</view>
     </view>
   </view>
+  <view class="rec-title" wx:if="{{item.title}}">{{item.title}}</view>
   <view class="rec-note" wx:if="{{item.note}}">{{item.note}}</view>
   <image wx:if="{{item.cover}}" class="rec-cover" src="{{item.cover}}" mode="aspectFill" lazy-load />
+  <view class="rec-foot">
+    <view class="foot-btn">❤️<text wx:if="{{item.likeCount}}">{{item.likeCount}}</text></view>
+    <view class="foot-btn">💬<text wx:if="{{item.commentCount}}">{{item.commentCount}}</text></view>
+  </view>
 </view>
 <view wx:if="{{!latest.length}}" class="empty">
   <text class="emoji">🌱</text>
@@ -90,7 +97,6 @@
 
 <view class="fab" bindtap="goCompose">＋</view>
 
-<!-- 想你爱心雨 -->
 <view class="rain" wx:if="{{rainHearts.length}}">
   <text wx:for="{{rainHearts}}" wx:key="index" class="rain-heart"
         style="left:{{item.left}}%;animation-delay:{{item.delay}}s;font-size:{{item.size}}rpx">{{item.emoji}}</text>
