@@ -1,7 +1,8 @@
 .page { padding: 40rpx 0 60rpx; }
-.hero { text-align: center; margin: 30rpx 0 40rpx; }
-.hero .emoji { font-size: 96rpx; line-height: 1; }
-.hero .title { font-size: 40rpx; font-weight: 800; margin-top: 16rpx; }
+.hero { text-align: center; margin: 30rpx auto 40rpx; width: 320rpx; }
+.hero-pola { padding-bottom: 16rpx; }
+.hero-emoji { font-size: 100rpx; line-height: 1.2; }
+.hero .title { font-size: 38rpx; font-weight: 800; margin-top: 20rpx; }
 .hero .desc { font-size: 24rpx; color: var(--text-dim); margin-top: 10rpx; line-height: 1.6; }
 
 .tabs { justify-content: center; margin-bottom: 30rpx; }

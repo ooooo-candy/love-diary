@@ -22,5 +22,8 @@
       <button class="btn btn-primary btn-block go" disabled="{{spinning}}" bindtap="spin">🎯 开转！</button>
     </view>
   </view>
-  <view class="result">{{result}}</view>
+  <view class="card result-card">
+    <view class="tape butter"></view>
+    <view class="result">{{result}}</view>
+  </view>
 </view>

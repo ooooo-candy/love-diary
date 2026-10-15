@@ -33,14 +33,11 @@ checkbox .wx-checkbox-input { transform: scale(1.15); }
 }
 .go { margin-top: 26rpx; width: 90%; }
 
+.result-card { margin: 30rpx 24rpx 0; padding-top: 38rpx; }
 .result {
-  margin: 30rpx 24rpx 0;
-  min-height: 120rpx;
+  min-height: 110rpx;
   display: flex; align-items: center; justify-content: center;
   text-align: center;
-  font-size: 26rpx; line-height: 1.7; color: var(--text-dim);
-  background: linear-gradient(135deg, var(--brand-soft), var(--bg));
-  border-radius: var(--r-md);
-  padding: 20rpx;
+  font-size: 27rpx; font-weight: 700; line-height: 1.7; color: var(--ink);
   white-space: pre-wrap;
 }

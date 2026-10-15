@@ -1,15 +1,19 @@
-.page { padding: 24rpx 0 60rpx; }
+.page { padding: 30rpx 0 60rpx; }
+.add-card { padding-top: 40rpx; }
 .row { display: flex; gap: 14rpx; align-items: center; }
 .grow { flex: 1; }
 
-.wish { display: flex; align-items: center; gap: 18rpx; padding: 22rpx 24rpx; }
+.wish { display: flex; align-items: center; gap: 18rpx; padding: 24rpx; }
+.wish:nth-child(odd) { transform: rotate(-.6deg); }
+.wish:nth-child(even) { transform: rotate(.5deg); }
 .check {
-  width: 44rpx; height: 44rpx; border-radius: 12rpx;
-  border: 3rpx solid var(--border);
+  width: 46rpx; height: 46rpx; border-radius: 14rpx;
+  border: 3rpx dashed var(--pink);
   display: flex; align-items: center; justify-content: center;
   font-size: 26rpx; color: #fff; flex: none;
+  background: var(--card);
 }
-.check.on { background: linear-gradient(135deg, var(--brand), var(--brand-2)); border-color: transparent; }
-.wish-text { flex: 1; font-size: 27rpx; }
-.wish-text.done { color: var(--text-dim); text-decoration: line-through; }
-.del { color: var(--text-dim); padding: 6rpx 10rpx; font-size: 26rpx; }
+.check.on { background: linear-gradient(135deg, var(--pink), #ffa585); border-style: solid; }
+.wish-text { flex: 1; font-size: 27rpx; font-weight: 600; }
+.wish-text.done { color: var(--ink-dim); text-decoration: line-through; }
+.del { color: var(--ink-dim); padding: 6rpx 10rpx; font-size: 26rpx; }

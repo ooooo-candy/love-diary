@@ -1,6 +1,7 @@
 <view class="page">
   <!-- 账号卡 -->
   <view class="card me-card">
+    <view class="tape"></view>
     <view class="avatar avatar-sm">
       <image wx:if="{{user.avatar}}" src="{{user.avatar}}" mode="aspectFill" />
       <text wx:else>{{user.nickname ? user.nickname[0] : '我'}}</text>
@@ -14,6 +15,7 @@
 
   <!-- 对方 -->
   <view class="card partner-card" wx:if="{{partnerJoined && partnerInfo}}">
+    <view class="tape butter"></view>
     <view class="avatar avatar-sm">
       <image wx:if="{{partnerInfo.avatar}}" src="{{partnerInfo.avatar}}" mode="aspectFill" />
       <text wx:else>{{partnerInfo.nickname[0]}}</text>
@@ -22,32 +24,35 @@
       <view class="me-name">{{partnerInfo.nickname}}</view>
       <view class="me-sub">已加入你们的小日子</view>
     </view>
-    <text class="online-dot"><i></i>在线</text>
+    <text class="dot-sticker">💗</text>
     <view class="love-line">❤️ 你们正在共享同一本记录</view>
   </view>
 
-  <!-- 数据格子 -->
+  <!-- 数据贴纸 -->
   <view class="grid">
-    <view class="cell hero-cell">
+    <view class="cell hero-cell tilt-l">
+      <view class="tape butter"></view>
       <view class="n">{{days}}</view>
-      <view class="l">在一起的天数</view>
+      <view class="l">天在一起</view>
     </view>
-    <view class="cell">
+    <view class="cell tilt-r">
       <view class="n">{{recCount}}</view>
       <view class="l">条记录</view>
     </view>
-    <view class="cell">
+    <view class="cell tilt-l">
       <view class="n">{{photoCount}}</view>
       <view class="l">张照片</view>
     </view>
-    <view class="cell">
+    <view class="cell hero-cell tilt-r">
       <view class="n">{{streakCount}}</view>
       <view class="l">连续记录天数</view>
     </view>
   </view>
 
   <!-- 心情分布 -->
-  <view class="section-title">心情分布</view>
+  <view class="section-head">
+    <view class="sticker-title pink">🌈 心情分布</view>
+  </view>
   <view class="card">
     <view class="mood-row" wx:for="{{moodBars}}" wx:key="label">
       <text class="mood-emoji">{{item.emoji}}</text>
@@ -57,7 +62,9 @@
   </view>
 
   <!-- 本月日历 -->
-  <view class="section-title">{{calendar.label}}</view>
+  <view class="section-head">
+    <view class="sticker-title lilac">🗓 {{calendar.label}}</view>
+  </view>
   <view class="card">
     <view class="cal-week">
       <text wx:for="{{['日','一','二','三','四','五','六']}}" wx:key="*this">{{item}}</text>
@@ -66,12 +73,13 @@
       <view class="cal-cell" wx:for="{{calendar.blanks}}" wx:key="*this"></view>
       <view class="cal-cell {{item.hasRec ? 'has' : ''}} {{item.today ? 'today' : ''}}" wx:for="{{calendar.cells}}" wx:key="index">{{item.d}}</view>
     </view>
-    <view class="cal-hint">亮起的日子有记录</view>
+    <view class="cal-hint">画着爱心的日子有记录</view>
   </view>
 
   <!-- 邀请 / 对方 -->
   <view class="card" wx:if="{{!partnerJoined}}">
-    <view class="section-title" style="margin:0 0 16rpx">等 TA 加入</view>
+    <view class="tape"></view>
+    <view class="sticker-title pink">💌 等 TA 加入</view>
     <view class="invite" bindtap="copyCode">
       <text class="i-label">情侣本邀请码（点击复制）</text>
       <text class="i-code">{{code}}</text>
@@ -98,13 +106,16 @@
   <!-- 编辑资料弹层 -->
   <view class="mask" wx:if="{{showEdit}}" bindtap="closeEdit">
     <view class="sheet" catchtap="">
+      <view class="tape butter" style="left:44rpx;margin:0;transform:rotate(-4deg)"></view>
       <view class="sheet-title">我们的资料</view>
       <view class="avatar-edit" bindtap="changeAvatar">
-        <view class="avatar avatar-lg">
-          <image wx:if="{{user.avatar}}" src="{{user.avatar}}" mode="aspectFill" />
-          <text wx:else>{{user.nickname ? user.nickname[0] : '我'}}</text>
+        <view class="polaroid avatar-pola">
+          <view class="ph-face-big">
+            <image wx:if="{{user.avatar}}" src="{{user.avatar}}" mode="aspectFill" />
+            <text wx:else>{{user.nickname ? user.nickname[0] : '我'}}</text>
+          </view>
         </view>
-        <text class="avatar-tip">点头像更换</text>
+        <text class="avatar-tip">点头像换一张 📷</text>
       </view>
       <view class="field">
         <text class="field-label">我的昵称</text>
@@ -127,8 +138,8 @@
   <!-- 小程序码弹层 -->
   <view class="mask" wx:if="{{showQr}}" bindtap="closeQr">
     <view class="sheet qr-sheet" catchtap="">
-      <view class="sheet-title">TA 扫码直接加入</view>
-      <image class="qr-img" src="{{qrUrl}}" mode="aspectFit" />
+      <view class="sticker-title pink">🔍 TA 扫码直接加入</view>
+      <view class="polaroid qr-pola"><image class="qr-img" src="{{qrUrl}}" mode="aspectFit" /></view>
       <view class="qr-hint">让 TA 用微信「扫一扫」</view>
       <button class="btn btn-primary btn-block" bindtap="saveQr">保存到相册</button>
       <button class="btn btn-ghost btn-block close-btn" bindtap="closeQr">关闭</button>

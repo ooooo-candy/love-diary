@@ -1,13 +1,15 @@
 <view class="page">
   <view wx:for="{{groups}}" wx:key="date" wx:for-index="g" class="group">
     <view class="group-head">
-      <text class="g-date">{{item.label}}</text>
+      <view class="sticker-title pink">{{item.label}}</view>
       <text class="g-rel" wx:if="{{item.rel}}">{{item.rel}}</text>
     </view>
     <view class="card rec" wx:for="{{item.items}}" wx:for-item="rec" wx:for-index="i" wx:key="_id">
+      <view class="tape {{i % 2 ? 'butter' : 'mint'}}"></view>
       <view class="rec-head">
         <text class="mood">{{rec.mood}}</text>
         <view class="rec-meta">
+          <view class="rec-title" wx:if="{{rec.title}}">{{rec.title}}</view>
           <view class="rec-date">{{rec.dateText}}</view>
           <view class="rec-sub" wx:if="{{rec.authorName || rec.place}}">✍️ {{rec.authorName}}{{rec.place ? ' · 📍' + rec.place : ''}}</view>
         </view>
@@ -16,22 +18,26 @@
           <text class="op del" bindtap="remove" data-id="{{rec._id}}">🗑</text>
         </view>
       </view>
-      <view class="rec-title" wx:if="{{rec.title}}">{{rec.title}}</view>
       <view class="note" wx:if="{{rec.note}}">{{rec.note}}</view>
+      <view class="voice-line" wx:if="{{rec.hasAudio}}" bindtap="playVoice" data-id="{{rec._id}}">
+        {{playingId === rec._id ? '⏸ 播放中' : '🎙 语音日记'}} {{rec.audioDuration ? rec.audioDuration + '″' : ''}}
+      </view>
+
+      <view wx:if="{{rec.thumbs.length}}" class="polaroid {{i % 2 ? 'tilt-r' : 'tilt-l'}} rec-polaroid">
+        <view class="p-grid">
+          <image wx:for="{{rec.thumbs}}" wx:for-item="th" wx:for-index="t" wx:key="*this"
+                 src="{{th}}" mode="aspectFill" lazy-load
+                 bindtap="preview" data-g="{{g}}" data-i="{{i}}" data-t="{{t}}" />
+          <view class="more-mask" wx:if="{{rec.more}}" bindtap="preview" data-g="{{g}}" data-i="{{i}}" data-t="0">
+            +{{rec.more}}
+          </view>
+        </view>
+      </view>
+
       <view class="tag-chips" wx:if="{{rec.tags.length}}">
         <text class="tag-chip" wx:for="{{rec.tags}}" wx:key="*this">#{{item}}</text>
       </view>
-      <view class="voice-line" wx:if="{{rec.hasAudio}}" bindtap="playVoice" data-id="{{rec._id}}">
-        {{playingId === rec._id ? '⏸ 播放中' : '▶ 语音日记'}} {{rec.audioDuration ? rec.audioDuration + '″' : ''}}
-      </view>
-      <view class="thumbs" wx:if="{{rec.thumbs.length}}">
-        <image wx:for="{{rec.thumbs}}" wx:for-item="th" wx:for-index="t" wx:key="*this"
-               src="{{th}}" mode="aspectFill" lazy-load
-               bindtap="preview" data-g="{{g}}" data-i="{{i}}" data-t="{{t}}" />
-        <view class="more-mask" wx:if="{{rec.more}}" bindtap="preview" data-g="{{g}}" data-i="{{i}}" data-t="0">
-          +{{rec.more}}
-        </view>
-      </view>
+
       <view class="rec-foot">
         <view class="foot-btn {{rec.liked ? 'liked' : ''}}" bindtap="toggleLike" data-id="{{rec._id}}">
           {{rec.liked ? '❤️' : '🤍'}}<text>{{rec.likeCount ? rec.likeCount : '喜欢'}}</text>
@@ -52,11 +58,12 @@
   <view class="cmt-mask" wx:if="{{showCmt}}" bindtap="closeCmt">
     <view class="cmt-sheet" catchtap="">
       <view class="cmt-head">
-        <text class="cmt-title">评论</text>
+        <view class="sticker-title pink">💬 评论</view>
         <text class="cmt-close" bindtap="closeCmt">✕</text>
       </view>
       <scroll-view scroll-y class="cmt-list">
-        <view class="cmt-item" wx:for="{{cmtList}}" wx:key="id">
+        <view class="cmt-item bubble" wx:for="{{cmtList}}" wx:key="id">
+          <view class="tail"></view>
           <view class="cmt-top">
             <text class="cmt-name">{{item.name}}</text>
             <text class="cmt-time">{{item.timeText}}</text>

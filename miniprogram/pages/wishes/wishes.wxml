@@ -1,7 +1,9 @@
 <view class="page">
   <view class="card add-card">
+    <view class="tape butter"></view>
+    <view class="sticker-title pink">⭐ 把想一起做的事写下来</view>
     <view class="row">
-      <input class="input grow" maxlength="60" placeholder="想一起做的一件事，比如：去看海" value="{{text}}" bindinput="onText" bindconfirm="add" />
+      <input class="input grow" maxlength="60" placeholder="比如：去看海" value="{{text}}" bindinput="onText" bindconfirm="add" />
       <button class="btn btn-primary btn-sm" disabled="{{busy}}" bindtap="add">添加</button>
     </view>
   </view>

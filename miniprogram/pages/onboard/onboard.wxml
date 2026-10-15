@@ -1,6 +1,8 @@
 <view class="page">
   <view class="hero">
-    <view class="emoji">{{mode === 'create' ? '💌' : '🔑'}}</view>
+    <view class="polaroid hero-pola tilt-l">
+      <view class="hero-emoji">{{mode === 'create' ? '💌' : '🔑'}}</view>
+    </view>
     <view class="title">{{mode === 'create' ? '创建你们的本子' : '加入 TA 的本子'}}</view>
     <view class="desc">{{mode === 'create' ? '创建后会生成邀请码，发给 TA 一起写' : '输入 TA 给你的 6 位邀请码'}}</view>
   </view>

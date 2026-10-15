@@ -1,87 +1,220 @@
-/* 全局样式：延续「朝暮」粉色主题 */
+/* ============================================================
+   「朝暮」手账风设计系统
+   奶油粉纸面 · 和纸胶带 · 拍立得 · 贴纸标题 · 圆角气泡
+   ============================================================ */
 page {
-  --brand: #ff6b9d;
-  --brand-2: #a78bfa;
-  --brand-soft: #fff0f5;
-  --bg: #fff7fa;
-  --bg-2: #f6eef2;
+  --pink: #ff8fb2;
+  --pink-deep: #f472a0;
+  --pink-soft: #ffeef4;
+  --butter: #ffe9a8;
+  --butter-soft: #fff6d9;
+  --mint: #bdeedd;
+  --lilac: #e6d7fa;
+  --peach: #ffd9c7;
+  --bg: #fff6f0;
+  --bg-2: #fff0e8;
   --card: #ffffff;
-  --text: #3d2430;
-  --text-dim: #b08e9c;
-  --border: #f3e2e9;
-  --r-sm: 12px;
-  --r-md: 18px;
+  --ink: #5a4652;
+  --ink-dim: #bda3ae;
+  --line: #f2d8e0;
+  --r-card: 32rpx;
+  --shadow: 0 8rpx 24rpx -8rpx rgba(244, 114, 160, .28);
   background: var(--bg);
-  color: var(--text);
+  color: var(--ink);
   font-size: 28rpx;
-  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif;
+  font-family: 'Yuanti SC', 'YouYuan', '幼圆', 'Varela Round', 'PingFang SC', sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   page {
-    --brand-soft: #331f2a;
-    --bg: #171019;
-    --bg-2: #2b202f;
-    --card: #241b28;
-    --text: #f3e6ec;
-    --text-dim: #9c8290;
-    --border: #352838;
+    --pink: #ff9ebc;
+    --pink-deep: #f472a0;
+    --pink-soft: #3a2733;
+    --butter: #f7d774;
+    --butter-soft: #3b3222;
+    --mint: #2e4a41;
+    --lilac: #3b3352;
+    --peach: #4a3630;
+    --bg: #261d24;
+    --bg-2: #2e2430;
+    --card: #322737;
+    --ink: #f7e9ef;
+    --ink-dim: #bd9fae;
+    --line: #473648;
+    --shadow: 0 8rpx 24rpx -8rpx rgba(0, 0, 0, .45);
   }
 }
 
+/* ---------- 卡片：纸面 + 虚线内框 ---------- */
 .card {
+  position: relative;
   background: var(--card);
-  border-radius: var(--r-md);
-  padding: 24rpx;
-  box-shadow: 0 10rpx 30rpx -18rpx rgba(122, 31, 67, .25);
-  margin: 0 24rpx 24rpx;
+  border-radius: var(--r-card);
+  padding: 28rpx;
+  margin: 0 24rpx 26rpx;
+  box-shadow: var(--shadow);
+  border: 2rpx solid var(--line);
 }
 
+/* 和纸胶带：贴在卡片顶部中央 */
+.tape {
+  position: absolute;
+  top: -16rpx;
+  left: 50%;
+  width: 160rpx;
+  height: 44rpx;
+  margin-left: -80rpx;
+  background: rgba(255, 158, 181, .55);
+  transform: rotate(-3deg);
+  border-radius: 6rpx;
+  box-shadow: 0 2rpx 6rpx rgba(244, 114, 160, .18);
+  z-index: 3;
+}
+.tape.butter { background: rgba(255, 224, 130, .6); }
+.tape.mint { background: rgba(168, 230, 207, .55); }
+.tape.lilac { background: rgba(214, 193, 250, .55); }
+
+/* 贴纸标题：微微歪斜的彩色小标签 */
+.sticker-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10rpx;
+  background: var(--butter-soft);
+  border: 2rpx solid var(--butter);
+  color: var(--ink);
+  font-size: 25rpx;
+  font-weight: 800;
+  padding: 8rpx 22rpx;
+  border-radius: 14rpx 18rpx 16rpx 20rpx;
+  transform: rotate(-1.5deg);
+  box-shadow: 2rpx 4rpx 0 rgba(244, 114, 160, .12);
+  margin: 4rpx 0 18rpx 4rpx;
+}
+.sticker-title.pink { background: var(--pink-soft); border-color: var(--pink); }
+.sticker-title.mint { background: var(--mint); border-color: var(--mint); }
+.sticker-title.lilac { background: var(--lilac); border-color: var(--lilac); }
+
+/* 气泡：圆角不规则 + 小尾巴 */
+.bubble {
+  position: relative;
+  background: var(--pink-soft);
+  border-radius: 26rpx 26rpx 26rpx 8rpx;
+  padding: 20rpx 24rpx;
+}
+.bubble.tail-right { border-radius: 26rpx 26rpx 8rpx 26rpx; }
+.bubble .tail {
+  position: absolute;
+  left: -12rpx; top: 26rpx;
+  width: 0; height: 0;
+  border-top: 12rpx solid transparent;
+  border-bottom: 12rpx solid transparent;
+  border-right: 16rpx solid var(--pink-soft);
+}
+
+/* 拍立得照片 */
+.polaroid {
+  background: #fff;
+  border-radius: 12rpx;
+  padding: 12rpx 12rpx 44rpx;
+  box-shadow: 0 8rpx 20rpx -8rpx rgba(90, 70, 82, .35);
+}
+.polaroid image { border-radius: 8rpx; width: 100%; display: block; }
+.tilt-l { transform: rotate(-1.6deg); }
+.tilt-r { transform: rotate(1.4deg); }
+
+/* 手账分割线（虚线 + 小爱心） */
+.dash-line {
+  border-top: 3rpx dashed var(--line);
+  margin: 20rpx 0;
+  position: relative;
+}
+.dash-line::after {
+  content: '❀';
+  position: absolute;
+  left: 50%; top: -18rpx;
+  transform: translateX(-50%);
+  background: var(--card);
+  padding: 0 14rpx;
+  color: var(--pink);
+  font-size: 22rpx;
+}
+
+/* ---------- 按钮 ---------- */
 .btn {
   display: flex; align-items: center; justify-content: center;
   height: 88rpx; border-radius: 44rpx;
-  font-size: 30rpx; font-weight: 700;
+  font-size: 30rpx; font-weight: 800;
   border: none; line-height: 88rpx;
+  transition: transform .15s ease;
 }
 .btn::after { border: none; }
+.btn:active { transform: scale(.96); }
 .btn-primary {
   color: #fff;
-  background: linear-gradient(135deg, var(--brand), var(--brand-2));
-  box-shadow: 0 10rpx 24rpx -10rpx rgba(255, 107, 157, .6);
+  background: linear-gradient(135deg, var(--pink), #ffa585);
+  box-shadow: 0 8rpx 20rpx -6rpx rgba(244, 114, 160, .55),
+              inset 0 0 0 3rpx rgba(255, 255, 255, .35);
 }
 .btn-ghost {
-  color: var(--brand);
-  background: var(--brand-soft);
+  color: var(--pink-deep);
+  background: var(--pink-soft);
+  border: 2rpx dashed var(--pink);
 }
 .btn-block { width: 100%; }
-.btn-sm { height: 64rpx; line-height: 64rpx; padding: 0 24rpx; font-size: 24rpx; border-radius: 32rpx; width: auto; display: inline-flex; }
+.btn-sm { height: 64rpx; line-height: 64rpx; padding: 0 26rpx; font-size: 24rpx; border-radius: 32rpx; width: auto; display: inline-flex; }
 .btn[disabled] { opacity: .55; color: #fff; }
 
+/* ---------- 表单 ---------- */
 .field { margin-bottom: 26rpx; }
-.field-label { font-size: 24rpx; font-weight: 700; color: var(--text-dim); margin-bottom: 10rpx; display: block; }
+.field-label {
+  font-size: 23rpx; font-weight: 800;
+  color: var(--ink-dim); margin-bottom: 10rpx; display: block;
+  letter-spacing: 1rpx;
+}
 .input, .textarea {
   background: var(--bg-2);
-  border-radius: var(--r-sm);
+  border: 2rpx dashed var(--line);
+  border-radius: 18rpx 20rpx 18rpx 22rpx;
   padding: 20rpx 24rpx;
   font-size: 28rpx;
   width: auto;
+  color: var(--ink);
 }
 .textarea { width: auto; min-height: 160rpx; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 14rpx; }
 .chip {
   padding: 10rpx 26rpx; border-radius: 999rpx;
-  background: var(--card); border: 2rpx solid var(--border);
-  font-size: 24rpx; font-weight: 600; color: var(--text-dim);
+  background: var(--card); border: 2rpx solid var(--line);
+  font-size: 24rpx; font-weight: 700; color: var(--ink-dim);
+  transition: all .15s ease;
 }
-.chip.on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
+.chip.on {
+  background: var(--pink-soft);
+  border-color: var(--pink);
+  color: var(--pink-deep);
+  transform: rotate(-1deg);
+}
 
-.empty { text-align: center; color: var(--text-dim); font-size: 26rpx; padding: 80rpx 0; }
-.empty .emoji { font-size: 72rpx; display: block; margin-bottom: 16rpx; }
+/* ---------- 其他 ---------- */
+.empty { text-align: center; color: var(--ink-dim); font-size: 26rpx; padding: 80rpx 0; }
+.empty .emoji { font-size: 76rpx; display: block; margin-bottom: 16rpx; }
 
-.avatar { border-radius: 50%; background: var(--brand-soft); display: flex; align-items: center; justify-content: center; color: var(--brand); font-weight: 800; overflow: hidden; }
+.avatar {
+  border-radius: 50%;
+  background: var(--pink-soft);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--pink-deep); font-weight: 800; overflow: hidden;
+  border: 4rpx solid #fff;
+  box-shadow: 0 4rpx 12rpx -4rpx rgba(244, 114, 160, .4);
+}
 .avatar-sm { width: 72rpx; height: 72rpx; font-size: 30rpx; }
 .avatar-lg { width: 128rpx; height: 128rpx; font-size: 52rpx; }
 .avatar image { width: 100%; height: 100%; }
 
-.section-title { font-size: 26rpx; font-weight: 800; color: var(--text-dim); margin: 8rpx 32rpx 16rpx; display: flex; justify-content: space-between; }
+.section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 10rpx 32rpx 18rpx;
+}
+.section-head .sticker-title { margin: 0; }
+.section-more { font-size: 23rpx; font-weight: 800; color: var(--pink-deep); }
