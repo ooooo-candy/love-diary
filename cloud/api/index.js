@@ -1220,7 +1220,13 @@ const handlers = {
         partnerName: b.partnerName,
         anniversary: b.anniversary || '',
         myAvatar: b.myAvatar || null,
-        partnerAvatar: b.partnerAvatar || null
+        partnerAvatar: b.partnerAvatar || null,
+        createdBy: b.createdBy || '',
+        members: b.members || [],
+        wishes: b.wishes || [],
+        miss: b.miss || null,
+        missEvents: b.missEvents || [],
+        dailyQA: b.dailyQA || []
       })),
       records: db.records.map((r) => ({
         bookId: r.bookId,

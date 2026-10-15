@@ -4,6 +4,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const books = db.collection('books');
 const users = db.collection('users');
+const records = db.collection('records');
 const _ = db.command;
 
 async function me(OPENID) {
@@ -154,6 +155,50 @@ exports.main = async (event) => {
       if ((b.members || []).length >= 2) return { ok: false, error: '这个本子已经有两位主人啦' };
       await books.doc(b._id).update({ data: { members: _.push(u._id) } });
       await users.doc(u._id).update({ data: { bookId: b._id } });
+
+      /* 迁移进来的旧数据里，没到场的那个人的身份是 PENDING，现在补上 */
+      try {
+        const bd = (await books.doc(b._id).get()).data;
+        const patch = {};
+        if ((bd.dailyQA || []).some((x) => x.answers && x.answers.PENDING !== undefined)) {
+          patch.dailyQA = bd.dailyQA.map((x) => {
+            const answers = {};
+            Object.keys(x.answers || {}).forEach((k) => { answers[k === 'PENDING' ? u._id : k] = x.answers[k]; });
+            return { date: x.date, answers: answers };
+          });
+        }
+        if (bd.miss && bd.miss.counts && bd.miss.counts.PENDING !== undefined) {
+          const counts = { ...bd.miss.counts };
+          counts[u._id] = counts.PENDING;
+          delete counts.PENDING;
+          patch.miss = { date: bd.miss.date, counts: counts };
+        }
+        if ((bd.missEvents || []).some((e) => e.from === 'PENDING')) {
+          patch.missEvents = bd.missEvents.map((e) => (e.from === 'PENDING' ? { ...e, from: u._id } : e));
+        }
+        const legacy = bd.legacy || null;
+        if (legacy) {
+          if (!legacy.creatorNew) legacy.creatorNew = u._id;
+          else if (!legacy.partnerNew) legacy.partnerNew = u._id;
+          patch.legacy = legacy;
+        }
+        await books.doc(b._id).update({ data: patch });
+
+        /* 记录里的 PENDING 点赞/评论/作者 */
+        const recs = await records.where({ bookId: b._id }).limit(500).get();
+        for (const r of recs.data) {
+          const p = {};
+          if ((r.likes || []).indexOf('PENDING') >= 0) {
+            p.likes = r.likes.map((x) => (x === 'PENDING' ? u._id : x));
+          }
+          if ((r.comments || []).some((c) => c.uid === 'PENDING')) {
+            p.comments = r.comments.map((c) => (c.uid === 'PENDING' ? { ...c, uid: u._id } : c));
+          }
+          if (r.authorId === 'PENDING') p.authorId = u._id;
+          if (Object.keys(p).length) await records.doc(r._id).update({ data: p });
+        }
+      } catch (err) { /* 补齐失败不影响加入 */ }
+
       const freshBook = await books.doc(b._id).get();
       const fresh = await users.doc(u._id).get();
       return { ok: true, data: { book: publicBook(freshBook.data, u._id), user: { _id: fresh.data._id, nickname: fresh.data.nickname, avatar: fresh.data.avatar, bookId: fresh.data.bookId } } };
