@@ -1363,7 +1363,7 @@
       </div>
       <div class="dc-wrap">
         <div class="dc-left">
-          <span class="field__label">选项（点一下上转盘，再点取消）</span>
+          <span class="field__label">选项（勾选上转盘）</span>
           <div class="row" style="gap:8px;align-items:center;margin:8px 0 10px">
             <input class="input" id="dcInput" maxlength="12" placeholder="比如：火锅" style="flex:1;min-width:0" />
             <button class="btn btn--primary btn--sm" type="button" id="dcAdd" style="flex:none">添加</button>
@@ -1393,10 +1393,14 @@
     function renderPool() {
       poolEl.innerHTML = pool.length
         ? pool
-            .map(
-              (o, i) =>
-                `<span class="dc-pool__opt${items.indexOf(o) >= 0 ? ' is-on' : ''}" data-toggle="${i}">${UI.escapeHtml(o)}<b data-pdel="${i}">✕</b></span>`
-            )
+            .map((o, i) => {
+              const on = items.indexOf(o) >= 0;
+              return `<label class="dc-check">
+                <input type="checkbox" data-toggle="${i}"${on ? ' checked' : ''} />
+                <span>${UI.escapeHtml(o)}</span>
+                <b data-pdel="${i}" title="从选项里删除">✕</b>
+              </label>`;
+            })
             .join('')
         : '<span class="dq-empty">还没有选项，先添加一个吧</span>';
     }
@@ -1464,24 +1468,7 @@
         return;
       }
       const toggle = e.target.closest('[data-toggle]');
-      if (toggle && !spinning) {
-        const o = pool[Number(toggle.dataset.toggle)];
-        if (!o) return;
-        const at = items.indexOf(o);
-        if (at >= 0) {
-          items.splice(at, 1);
-          if (items.length < 2) resultEl.innerHTML = '至少要两个选项才能开转哦';
-        } else {
-          if (items.length >= 12) {
-            UI.toast('转盘最多 12 个选项');
-            return;
-          }
-          items.push(o);
-        }
-        saveWheel();
-        refresh();
-        return;
-      }
+      if (toggle) return; /* 复选框由 change 事件处理 */
       if (e.target.closest('#dcAdd')) {
         const v = (inputEl.value || '').trim();
         if (!v) return;
@@ -1503,6 +1490,34 @@
         return;
       }
       if (e.target.closest('#dcGo')) spin();
+    });
+
+    /* 复选框勾选 / 取消 → 加上或移出转盘 */
+    poolEl.addEventListener('change', (e) => {
+      const box = e.target.closest('input[data-toggle]');
+      if (!box) return;
+      const o = pool[Number(box.dataset.toggle)];
+      if (!o) return;
+      if (spinning) {
+        box.checked = items.indexOf(o) >= 0;
+        return;
+      }
+      const at = items.indexOf(o);
+      if (box.checked) {
+        if (at < 0) {
+          if (items.length >= 12) {
+            UI.toast('转盘最多 12 个选项');
+            box.checked = false;
+            return;
+          }
+          items.push(o);
+        }
+      } else if (at >= 0) {
+        items.splice(at, 1);
+        if (items.length < 2) resultEl.innerHTML = '至少要两个选项才能开转哦';
+      }
+      saveWheel();
+      drawWheel();
     });
     body.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && e.target.id === 'dcInput') {
