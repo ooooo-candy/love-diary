@@ -989,6 +989,34 @@ html.is-guest .main { padding-top: 8px; }
 .invite__code { font-size: 30px; font-weight: 800; letter-spacing: 8px; margin: 4px 0 2px; }
 .invite__hint { font-size: 11px; opacity: .85; }
 
+/* ---------- 对方信息（已加入） ---------- */
+.partner-row {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 12px; padding: 12px 14px;
+  background: var(--bg-2);
+  border-radius: var(--r-md);
+}
+.partner-row__main { flex: 1; min-width: 0; }
+.partner-row__name { font-size: 14.5px; font-weight: 800; }
+.partner-row__date {
+  font-size: 11.5px; color: var(--text-dim); margin-top: 3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.online-dot {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 700; color: var(--text-dim);
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 4px 10px; border-radius: 999px;
+  flex: none;
+}
+.online-dot i { width: 8px; height: 8px; border-radius: 50%; background: #c9c9c9; }
+.online-dot.is-on { color: #128a4c; border-color: rgba(34, 197, 94, .4); }
+.online-dot.is-on i {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, .8);
+}
+
 /* ---------- 邀请二维码 & 扫一扫 ---------- */
 .qr-card { text-align: center; padding: 22px 16px; }
 .qr-img {

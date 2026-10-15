@@ -215,6 +215,7 @@
         dailyHistory: b.dailyHistory || [],
         onboarded: Boolean(state.book),
         code: b.code || '',
+        partnerInfo: b.partnerInfo || null,
         members: b.members || []
       };
     },

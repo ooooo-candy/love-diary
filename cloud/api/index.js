@@ -421,6 +421,23 @@ function commentAvatarMap(db, b) {
   return map;
 }
 
+/* 另一半的账号信息（头像/昵称/用户名/邮箱/最近在线） */
+function partnerInfoOf(db, b, myUid) {
+  if (!b) return null;
+  const otherId = (b.members || []).filter((x) => x !== myUid)[0];
+  if (!otherId) return null;
+  const usr = db.users.filter((x) => x._id === otherId)[0] || {};
+  const isCreator = otherId === b.createdBy;
+  return {
+    uid: otherId,
+    username: usr.username || '',
+    email: usr.email || '',
+    nickname: usr.nickname || (isCreator ? b.myName : b.partnerName) || 'Ta',
+    avatar: isCreator ? b.myAvatar || null : b.partnerAvatar || null,
+    lastSeen: usr.lastSeen || 0
+  };
+}
+
 function findUserByName(db, username) {
   const name = normUsername(username);
   return db.users.filter((x) => x.username === name)[0] || null;
@@ -900,7 +917,9 @@ const handlers = {
       .sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : (y.createdAt || 0) - (x.createdAt || 0)))
       .slice(0, 500)
       .map((r) => publicRecord(r, commentAvatarMap(db, b)));
-    return { book: publicBook(b), records: list };
+    const book = publicBook(b);
+    book.partnerInfo = partnerInfoOf(db, b, u._id);
+    return { book: book, records: list };
   },
 
   async upsertRecord(payload) {
@@ -1120,7 +1139,7 @@ const handlers = {
     return { myCount: m.counts[u._id] || 0, partnerCount: m.counts[partnerId] || 0, eventTs: ev.ts };
   },
 
-  /* 轮询新的「想你」事件：前端传入上次看到的最新时间戳 */
+  /* 轮询新的「想你」事件：前端传入上次看到的最新时间戳；顺带节流记录在线心跳 */
   async checkMiss(payload) {
     const db = await loadDB();
     const u = userByToken(db, payload.uid, payload.token);
@@ -1128,6 +1147,10 @@ const handlers = {
     if (!b) fail('还没有加入任何本子', 'NO_BOOK');
     const since = Number(payload.since) || 0;
     const events = (b.missEvents || []).filter((e) => e.ts > since);
+    if (!u.lastSeen || Date.now() - u.lastSeen > 120000) {
+      u.lastSeen = Date.now();
+      await saveDB(db);
+    }
     return { events: events, now: Date.now() };
   },
 

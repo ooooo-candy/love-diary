@@ -557,37 +557,58 @@
     return { cells: cells, label: `${year} 年 ${month + 1} 月` };
   }
 
-  /* 情侣本卡片：账号 + 邀请码 */
+  /* 情侣本卡片：账号 + 对方信息（已加入）/ 邀请码（未加入） */
   function bookCardHtml() {
     const p = Store.getProfile();
     const me = Store.getMe() || {};
     const account = [me.username, me.email].filter(Boolean).join(' · ');
-    const joined = (p.members || []).length >= 2;
+    const partner = p.partnerInfo || null;
+    const joined = (p.members || []).length >= 2 && partner;
+
+    const meRow = `
+      <div class="event-row">
+        <div class="event-row__icon">👤</div>
+        <div class="event-row__main">
+          <div class="event-row__name">${UI.escapeHtml(me.nickname || account || '未登录')}</div>
+          <div class="event-row__date">${
+            (account ? '账号：' + UI.escapeHtml(account) + ' · ' : '') +
+            (Cloud.isOnline() ? '已同步到云端' : '本地演示模式')
+          }</div>
+        </div>
+        <button class="btn btn--ghost btn--sm" type="button" data-act="logout" style="flex:none">退出</button>
+      </div>`;
+
+    if (joined) {
+      const online = partner.lastSeen && Date.now() - partner.lastSeen < 5 * 60000;
+      const acc = [partner.username, partner.email].filter(Boolean).join(' · ');
+      return `
+        <div class="section" style="margin-top:0">
+          <div class="card">
+            ${meRow}
+            <div class="partner-row">
+              ${avatarHtml(partner.avatar, partner.nickname, 'avatar--sm')}
+              <div class="partner-row__main">
+                <div class="partner-row__name">${UI.escapeHtml(partner.nickname || 'Ta')}</div>
+                <div class="partner-row__date">${acc ? '账号：' + UI.escapeHtml(acc) : '已加入你们的小日子'}</div>
+              </div>
+              <span class="online-dot${online ? ' is-on' : ''}"><i></i>${online ? '在线' : '离线'}</span>
+            </div>
+            <div class="setting-row__hint" style="margin-top:12px;text-align:center">❤️ 你们正在共享同一本记录</div>
+          </div>
+        </div>`;
+    }
 
     return `
       <div class="section" style="margin-top:0">
         <div class="card">
-          <div class="event-row">
-            <div class="event-row__icon">👤</div>
-            <div class="event-row__main">
-              <div class="event-row__name">${UI.escapeHtml(me.nickname || account || '未登录')}</div>
-              <div class="event-row__date">${
-                (account ? '账号：' + UI.escapeHtml(account) + ' · ' : '') +
-                (Cloud.isOnline() ? '已同步到云端，换手机登录也能看到' : '本地演示模式，数据只存在这台设备')
-              }</div>
-            </div>
-            <button class="btn btn--ghost btn--sm" type="button" data-act="logout" style="flex:none">退出</button>
-          </div>
-
+          ${meRow}
           <div class="invite" data-act="copy-code">
             <div class="invite__label">情侣本邀请码</div>
             <div class="invite__code">${UI.escapeHtml(p.code || '------')}</div>
             <span class="invite__hint">点击复制，或生成二维码让 TA 扫一扫加入</span>
           </div>
           <button class="btn btn--ghost btn--block btn--sm" type="button" data-act="show-qr" style="margin-top:10px">📱 生成邀请二维码</button>
-          <div class="setting-row__hint" style="margin-top:10px">
-            ${joined ? '✔ TA 已经加入了，你们正在共享同一本记录' : '还没有人加入，等 TA 用邀请码进来'}
-          </div>
+          <div class="setting-row__hint" style="margin-top:10px">还没有人加入，等 TA 用邀请码或扫码进来</div>
         </div>
       </div>`;
   }

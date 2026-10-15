@@ -148,6 +148,22 @@
     return map;
   }
 
+  function partnerInfoOf(b, myUid) {
+    if (!b) return null;
+    const otherId = (b.members || []).filter((x) => x !== myUid)[0];
+    if (!otherId) return null;
+    const usr = db.users.filter((x) => x._id === otherId)[0] || {};
+    const isCreator = otherId === b.createdBy;
+    return {
+      uid: otherId,
+      username: usr.username || '',
+      email: usr.email || '',
+      nickname: usr.nickname || (isCreator ? b.myName : b.partnerName) || 'Ta',
+      avatar: isCreator ? b.myAvatar || null : b.partnerAvatar || null,
+      lastSeen: usr.lastSeen || 0
+    };
+  }
+
   function consumeLocalCode(email, code, scene) {
     const now = Date.now();
     const rows = db.emailCodes.filter(
@@ -575,6 +591,10 @@
       const b = bookOfUser(u);
       if (!b) fail('还没有加入任何本子', 'NO_BOOK');
       const since = Number(p.since) || 0;
+      if (!u.lastSeen || now() - u.lastSeen > 120000) {
+        u.lastSeen = now();
+        save();
+      }
       return { events: (b.missEvents || []).filter((e) => e.ts > since), now: now() };
     },
 
@@ -627,7 +647,9 @@
         .sort((a, c) => (a.date < c.date ? 1 : a.date > c.date ? -1 : (c.createdAt || 0) - (a.createdAt || 0)))
         .slice(0, 500)
         .map((r) => publicRecord(r, commentAvatarMap(b)));
-      return { book: publicBook(b), records: list };
+      const book = publicBook(b);
+      book.partnerInfo = partnerInfoOf(b, u._id);
+      return { book: book, records: list };
     },
 
     async upsertRecord(p) {
