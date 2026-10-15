@@ -12,6 +12,13 @@ Page({
     this.setData({ loading: true, error: '' });
     wx.login({
       success: (res) => {
+        /* 首次进入先初始化数据库集合（幂等，失败不影响登录） */
+        if (!wx.getStorageSync('setupDone')) {
+          api
+            .call('setup', {})
+            .then(() => wx.setStorageSync('setupDone', true))
+            .catch(() => {});
+        }
         api
           .call('user', { action: 'login', code: res.code })
           .then((data) => {
