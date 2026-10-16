@@ -48,6 +48,15 @@ function extOf(oldId) {
   return m ? m[1] : 'jpg';
 }
 
+/* 不同版本 SDK 的 uploadFile 返回形状不一，统一取字符串 fileID */
+function fileIdOf(up) {
+  if (!up) return '';
+  if (typeof up.fileID === 'string') return up.fileID;
+  if (up.fileID && typeof up.fileID.fileID === 'string') return up.fileID.fileID;
+  if (up.fileID && typeof up.fileID.fileid === 'string') return up.fileID.fileid;
+  return '';
+}
+
 /* 清空集合（新环境里全是测试/半途数据，原原本本重来） */
 async function wipe(col) {
   for (let i = 0; i < 300; i++) {
@@ -118,14 +127,14 @@ exports.main = async (event) => {
             cloudPath: 'avatars/' + myNewId + '.jpg',
             fileContent: await downloadBuffer(urls[oldBook.myAvatar])
           });
-          myAvatarFile = up.fileID;
+          myAvatarFile = fileIdOf(up);
         }
         if (oldBook.partnerAvatar && urls[oldBook.partnerAvatar]) {
           const up = await cloud.uploadFile({
             cloudPath: 'avatars/partner_' + Date.now() + '.jpg',
             fileContent: await downloadBuffer(urls[oldBook.partnerAvatar])
           });
-          partnerAvatarFile = up.fileID;
+          partnerAvatarFile = fileIdOf(up);
         }
       }
       await users.doc(myNewId).update({ data: { avatar: myAvatarFile } });
@@ -169,7 +178,8 @@ exports.main = async (event) => {
           cloudPath: 'migrate/dump.json',
           fileContent: Buffer.from(JSON.stringify(all), 'utf8')
         });
-        dumpFileID = up.fileID;
+        /* 不同版本 SDK 返回形状不一，统一取字符串 */
+        dumpFileID = fileIdOf(up);
       }
       return {
         ok: true,
@@ -186,11 +196,19 @@ exports.main = async (event) => {
     if (event.action === 'batch') {
       const u = (await users.where({ openid: OPENID }).limit(1).get()).data[0];
       if (!u || !u.bookId) return { ok: false, error: '请先完成迁移初始化' };
-      const dumpRes = await cloud.getTempFileURL({ fileList: [event.dumpFileID] });
-      const url = dumpRes.fileList && dumpRes.fileList[0] && dumpRes.fileList[0].tempFileURL;
-      if (!url) return { ok: false, error: '迁移缓存失效，请重新开始' };
-      const dumpRes2 = await axios.get(url, { responseType: 'json', timeout: 30000 });
-      const all = dumpRes2.data || [];
+      /* 兼容各种 SDK 形状，取出字符串 fileID 后直接下载缓存 */
+      let dumpId = event.dumpFileID;
+      if (dumpId && typeof dumpId === 'object') dumpId = dumpId.fileID || dumpId.fileid || '';
+      if (!dumpId || typeof dumpId !== 'string') return { ok: false, error: '迁移缓存失效，请重新开始' };
+      const dl = await cloud.downloadFile({ fileID: dumpId });
+      if (!dl || !dl.fileContent) return { ok: false, error: '迁移缓存读取失败，请重新开始' };
+      let all = [];
+      try {
+        all = JSON.parse(dl.fileContent.toString('utf8'));
+      } catch (err) {
+        return { ok: false, error: '迁移缓存损坏，请重新开始' };
+      }
+      if (!Array.isArray(all)) all = [];
 
       const start = Math.max(0, Number(event.start) || 0);
       const count = Math.min(4, Math.max(1, Number(event.count) || 4));
@@ -223,7 +241,7 @@ exports.main = async (event) => {
               cloudPath: 'records/' + u.bookId + '/' + (r.createdAt || Date.now()) + '_' + done + '_' + images.length + '.' + extOf(img.id),
               fileContent: buf
             });
-            images.push({ fileId: up.fileID });
+            images.push({ fileId: fileIdOf(up) });
           } catch (err) { /* 单张失败跳过 */ }
         }
         let audio = null;
@@ -234,7 +252,7 @@ exports.main = async (event) => {
               cloudPath: 'records/' + u.bookId + '/' + (r.createdAt || Date.now()) + '_' + done + '_audio.' + extOf(r.audio.id),
               fileContent: buf
             });
-            audio = { fileId: up.fileID, duration: r.audio.duration || 0 };
+            audio = { fileId: fileIdOf(up), duration: r.audio.duration || 0 };
           } catch (err) { /* 忽略 */ }
         }
         await records.add({
