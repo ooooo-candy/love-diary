@@ -4,7 +4,7 @@
   "description": "我们的小日子 · 云端接口（账号 / 情侣本 / 记录 / 照片）",
   "main": "index.js",
   "dependencies": {
-    "@cloudbase/node-sdk": "^2.8.1",
+    "@cloudbase/node-sdk": "^4.9.0",
     "nodemailer": "^10.1.0"
   }
 }

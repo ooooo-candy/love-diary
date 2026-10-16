@@ -1257,6 +1257,47 @@ const handlers = {
     return { urls: map };
   },
 
+  /* 一次性彻底清空：数据文件 + 云存储里所有文件（旧版下线用） */
+  async wipeAll(payload) {
+    if (String(payload.secret) !== 'wipe-all-cm-2026') fail('forbidden');
+    /* 1. 数据文件清空 */
+    await saveDB({ users: [], books: [], records: [], emailCodes: [] });
+    /* 2. 云存储 love-diary/ 下全部文件（照片/头像/语音/数据文件） */
+    let deleted = 0;
+    let sample = [];
+    let listErr = '';
+    try {
+      let marker = '';
+      for (let round = 0; round < 50; round++) {
+        const res = await app.listFiles({ prefix: 'love-diary/', maxKeys: 1000, marker: marker });
+        const list = res.fileList || res.files || [];
+        if (!sample.length && list.length) sample = list.slice(0, 3).map((f) => f.fileID || f.fileId || f.cloudPath || f.Key);
+        const ids = list.map((f) => f.fileID || f.fileId || f.cloudPath || f.Key).filter(Boolean);
+        for (let j = 0; j < ids.length; j += 50) {
+          try {
+            await app.deleteFile({ fileList: ids.slice(j, j + 50) });
+          } catch (err) { /* 单批失败继续 */ }
+          deleted += Math.min(50, ids.length - j);
+        }
+        marker = res.nextMarker || res.marker || '';
+        if (!marker || !list.length) break;
+      }
+    } catch (err) {
+      listErr = err && err.message ? err.message : 'list failed';
+    }
+    return { deleted: deleted, sample: sample, listErr: listErr };
+  },
+
+  /* 探针：上传一个临时文件，返回 fileID（用于确认存储桶名） */
+  async probe(payload) {
+    if (String(payload.secret) !== 'wipe-all-cm-2026') fail('forbidden');
+    const up = await app.uploadFile({
+      cloudPath: 'love-diary/_probe.txt',
+      fileContent: Buffer.from('probe', 'utf8')
+    });
+    return { fileID: up.fileID || up.fileId || '' };
+  },
+
   async getFileUrl(payload) {
     const db = await loadDB();
     userByToken(db, payload.uid, payload.token);
